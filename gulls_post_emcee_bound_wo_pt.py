@@ -1006,7 +1006,7 @@ if __name__ == '__main__':
             ax1.set_ylabel('Magnification')
             ax2.set_ylabel('Residuals')
             ax2.set_xlabel('BJD')
-            ax1.set_title('s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, \\ntE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f' % tuple(truths['params']))
+            ax1.set_title('s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, \ntE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f' %tuple(event_fit.true_params)) 
             ax1.legend()
 
             plt.savefig(path+'posteriors/'+event_name+'_lightcurve_samples.png', dpi=300)
