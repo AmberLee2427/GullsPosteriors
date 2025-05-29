@@ -11,7 +11,7 @@ import sys
 import numpy as np
 
 
-
+'''
 def prior_transform(self, u, true, prange, normal=False):
     """Transform unit cube to the parameter space. Nested sampling has firm boundaries on the prior space."""
         
@@ -42,7 +42,7 @@ def prior_transform(self, u, true, prange, normal=False):
     if normal:
 
         def normal(u, mu, sig, bounds):
-            '''Maps a uniform random variable u (between 0 and 1) to a truncated normal random value x,
+            """Maps a uniform random variable u (between 0 and 1) to a truncated normal random value x,
             constrained between bounds[0] and bounds[1], with a mean of mu and standard deviation of sig.
 
             Parameters:
@@ -53,7 +53,7 @@ def prior_transform(self, u, true, prange, normal=False):
 
             Returns:
             float: Truncated normal random value x constrained between bounds[0] and bounds[1].
-            '''
+            """
 
             # Calculate the lower and upper bounds in terms of the standard normal distribution
             a, b = (bounds[0] - mu) / sig, (bounds[1] - mu) / sig
@@ -123,7 +123,86 @@ def prior_transform(self, u, true, prange, normal=False):
         x[1] = q
         x[11] = period
 
-    return x
+    return x #'''
+
+# In Fit/_dynesty.py
+import numpy as np # Make sure numpy is imported in this file
+
+def prior_transform(self, u, true, prange_linear, prange_log, normal=False):
+    """
+    Transform unit cube to the parameter space.
+    Handles linear and log-space parameters separately.
+    """
+    # THE FIX: Ensure the 'true' parameter is a NumPy array for fancy indexing
+    true = np.asarray(true)
+
+    # Define which parameter indices are linear vs. log
+    # s, q, rho, period are log
+    log_indices = [0, 1, 2, 11]
+    # u0, alpha, t0, tE, piEE, piEN, i, phase are linear
+    linear_indices = [3, 4, 5, 6, 7, 8, 9, 10]
+
+    # --- Handle linear parameters ---
+    true_linear = true[linear_indices]
+    min_linear = true_linear - prange_linear / 2.0
+    max_linear = true_linear + prange_linear / 2.0
+    sig_linear = prange_linear / 5.0 # Or whatever factor you deem appropriate
+
+    # --- Handle log parameters ---
+    # Convert true values to log10 space
+    true_log = np.log10(true[log_indices])
+    min_log = true_log - prange_log / 2.0
+    max_log = true_log + prange_log / 2.0
+    sig_log = prange_log / 5.0 # Or whatever factor you deem appropriate
+
+    # The full 'mu' and 'sigma' vectors for the truncated normal
+    true_array = np.zeros(len(true))
+    true_array[linear_indices] = true_linear
+    true_array[log_indices] = true_log
+
+    sig_array = np.zeros(len(true))
+    sig_array[linear_indices] = sig_linear
+    sig_array[log_indices] = sig_log
+
+    min_array = np.zeros(len(true))
+    min_array[linear_indices] = min_linear
+    min_array[log_indices] = min_log
+
+    max_array = np.zeros(len(true))
+    max_array[linear_indices] = max_linear
+    max_array[log_indices] = max_log
+
+    if normal:
+        # Calculate the bounds in terms of the standard normal distribution
+        a, b = (min_array - true_array) / sig_array, (max_array - true_array) / sig_array
+
+        # Create the truncated normal distribution
+        trunc_normal = truncnorm(a, b, loc=true_array, scale=sig_array)
+
+        # Map the uniform random variable to the truncated normal distribution
+        if u.ndim == 2:
+            x = np.zeros_like(u)
+            for i in range(u.shape[0]):
+                x[i] = trunc_normal.ppf(u[i])
+        else:
+            x = trunc_normal.ppf(u)
+    else:
+        # Simple uniform transformation
+        full_prange = max_array - min_array
+        x = (u - 0.5) * full_prange + true_array
+
+    # Now, create the final physical parameter array
+    final_params = np.zeros_like(x)
+    if u.ndim == 2:
+        # Get the linear-space values
+        final_params[:, linear_indices] = x[:, linear_indices]
+        # Convert log-space values back to linear and place them
+        final_params[:, log_indices] = 10.0**x[:, log_indices]
+    else:
+        final_params[linear_indices] = x[linear_indices]
+        final_params[log_indices] = 10.0**x[log_indices]
+
+    return final_params
  
 def runplot(self, res, event_name, path):
     if 'run' in self.debug:

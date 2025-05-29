@@ -96,7 +96,7 @@ class Fit:
             A = event.get_magnification(t, obs)
             fs, fb = self.get_fluxes(A, f, f_err**2)
 
-            chi2[obs] = ((f - A*fs+fb) / f_err) ** 2
+            chi2[obs] = ((f - (A*fs + fb)) / f_err) ** 2
 
             chi2sum += np.sum(chi2[obs])
 

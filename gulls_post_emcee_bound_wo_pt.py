@@ -716,6 +716,98 @@ if __name__ == '__main__':
         print('\n u prior uncertainty bounds = ', p_unc)
 
 
+        # In your main script, where you define p_unc
+
+
+        # NEW: Define p_unc for LOG parameters (s, q, rho, period)
+        # This is now the desired uncertainty in log10 space.
+        # Example: a log-uncertainty of 0.3 means a factor of 10**0.3 ~= 2
+        p_unc_log_space = np.array([
+            0.3, # s: e.g., factor of 2
+            0.3, # q: e.g., factor of 2
+            0.3, # rho: e.g., factor of 2
+            0.1  # period: e.g., factor of 1.25
+        ])
+        prange_log = p_unc_log_space * 2.0
+
+        # You'll also need to separate the linear ones
+        linear_indices = [3, 4, 5, 6, 7, 8, 9, 10]
+        p_unc_linear_space = p_unc[linear_indices]
+        prange_linear = p_unc_linear_space * 2.0
+
+        # FINALLY, when you call your sampler, you need to pass these new ranges.
+        # The call to run_emcee and lnprob_transform will need to be updated to take
+        # prange_linear and prange_log instead of the single 'bounds'.
+
+        # ---- START: Sanity Check Snippet for prior_transform (v2 - with zoom) ----
+        print('\\n\\n----------------------------------------------------')
+        print('--- Running prior_transform Sanity Check ---')
+        print('----------------------------------------------------')
+
+        # The center of the unit hypercube
+        u_center = np.ones(ndim) * 0.5
+
+        # Use your (fixed) prior_transform to get physical parameters
+        recovered_params = fit_obj.prior_transform(u_center, truths['params'], prange_linear, prange_log, normal=True)
+
+
+        print('Original truths:\\n', truths['params'])
+        print('Recovered from transform:\\n', recovered_params)
+        print('Percent difference (%):\\n', (recovered_params - truths['params']) / truths['params'] * 100)
+
+
+        # Generate a model light curve from these recovered parameters
+        event_check = Event(parallax_obj, orbit_obj, data,
+                            truths, data_obj.sim_time0, fit_tref)
+        event_check.set_params(recovered_params)
+
+        # Setup plot
+        fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(12, 8), gridspec_kw={'height_ratios': [3, 1]})
+        fig.suptitle('Sanity Check: Is prior_transform working? (Zoomed In)', fontsize=16)
+
+        # Time range for smooth model
+        t0_true = truths['params'][5]
+        tE_true = truths['params'][6]
+        tt = np.linspace(t0_true - 2.5 * tE_true, t0_true + 2.5 * tE_true, 2000)
+
+        # Plot data points for context (using the first observatory)
+        # NOTE: This uses fs/fb calculated from your *original* truths plot. Make sure that code has run.
+        t_data_full = data[0][0,:]
+        magnification_data = (data[0][1,:] - fb[0])/fs[0]
+        ax1.plot(t_data_full, magnification_data, 'k.', alpha=0.2, label='Data (W146)')
+
+        # Plot the TRUE model from your earlier plots
+        true_model_A = event_tc.get_magnification(tt, obs=0)
+        ax1.plot(tt, true_model_A, 'g-', lw=4, alpha=0.7, label='Original "Truths" Model')
+
+        # Plot the model from the TRANSFORMED parameters
+        check_model_A = event_check.get_magnification(tt, obs=0)
+        ax1.plot(tt, check_model_A, 'r--', lw=2, label='Model from Transformed Center (u=0.5)')
+
+        # Plot the residuals between the two models
+        residuals = check_model_A - true_model_A
+        ax2.plot(tt, residuals, 'r-')
+        ax2.axhline(0, color='black', linestyle='--')
+
+        ax1.set_ylabel('Magnification')
+        ax2.set_ylabel('Residual (Transform - True)')
+        ax2.set_xlabel('BJD')
+        ax1.legend()
+        ax1.set_title('If red dashed line is not perfectly on green, the transform is broken.')
+        ax1.grid(True, alpha=0.3)
+        ax2.grid(True, alpha=0.3)
+
+        # --- NEW LINES TO FIX THE ZOOM ---
+        zoom_width_tE = 1.5  # Adjust this value as needed. 1.0 = +/- 1 tE.
+        ax1.set_xlim(t0_true - zoom_width_tE * tE_true, t0_true + zoom_width_tE * tE_true)
+        # --- END NEW LINES ---
+
+        plt.savefig(path + 'posteriors/' + event_name + '_transform_sanity_check_zoomed.png', dpi=300)
+        print('--- Sanity Check Plot Saved ---')
+        print('----------------------------------------------------\\n\\n')
+        # ---- END: Sanity Check Snippet ----
+
+
         '''
         print('\nTesting the fit functions')
         print('--------------------------------')
@@ -752,7 +844,7 @@ if __name__ == '__main__':
         normal = True
 
         #print('Debug main: pos = ', initial_pos, initial_pos.shape)
-        initial_state = prior_transform(fit_obj, initial_pos, truths['params'], bounds, normal)
+        initial_state = fit_obj.prior_transform(u_center, truths['params'], prange_linear, prange_log, normal=True)
         #print('Debug main: state = ', initial_state, initial_state.shape)
 
         # Cropping the data to near-event
@@ -782,11 +874,14 @@ if __name__ == '__main__':
         sampler = fit_obj.run_emcee(nl, ndim, stepi, mi,
                                     fit_obj.lnprob_transform,
                                     pos,  # see next step for how to set this up
-                                    event_fit, truths['params'], bounds, normal,
+                                    event_fit, truths['params'],
+                                    prange_linear,
+                                    prange_log,
+                                    normal,
                                     threads=threads, 
                                     event_name=event_name, 
                                     path=path, 
-                                    labels=labels
+                                    labels=labels,
                                     )
         
         #print('Debug main: pos = ', pos, pos.shape)
@@ -814,7 +909,7 @@ if __name__ == '__main__':
         print('samples.ndim:', samples.ndim)
         print('samples.shape:', samples.shape)
 
-        samples = prior_transform(fit_obj, flat_chain, truths['params'], p_unc*2.0, normal=normal)
+        samples = prior_transform(fit_obj, flat_chain, truths['params'],prange_linear, prange_log, normal=True)
 
         np.save(path+'posteriors/'+event_name+'_post_samples.npy', flat_chain)
 
@@ -835,83 +930,87 @@ if __name__ == '__main__':
             fit_obj.traceplot(res, event_name, path, truths)
 
 
+        # In gulls_post_emcee_bound_wo_pt.py
+
         # lightcurve with samples
         #------------------------------------------------
         if not plot_final_figures:
-            print('\nskipping plotting lightcurve with samples\n')
-            plot_final_figures = True  # change this later, Amber !!!!
+            print('\\nskipping plotting lightcurve with samples\\n')
+            # plot_final_figures = True  # Commented out for safety
         if plot_final_figures:
-            print('\nplotting lightcurve with samples\n')
+            print('\\nplotting lightcurve with samples\\n')
             plt.figure()
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [3, 2]})
             colours = ['orange', 'red', 'green']
             data_labels = ['W146', 'Z087', 'K213']
             ns = 20  # number of samples to plot
 
+            # --- NEW LOGIC: Establish a CONSISTENT reference frame first ---
+            # Use the initial "truth" parameters (p0) to define the reference magnification model
+            p0 = prior_transform(fit_obj, np.array([0.5]*ndim), truths['params'], prange_linear, prange_log, normal=True)
+            event_fit.set_params(p0)
+            
+            # Calculate fs and fb for EACH observatory based on this true model
+            # and store them.
+            fs_ref, fb_ref = {}, {}
             for obs in event_fit.data.keys():
+                t_obs = event_fit.data[obs][0]
+                f_obs = event_fit.data[obs][1]
+                ferr_obs = event_fit.data[obs][2]
+                A_ref = event_fit.get_magnification(t_obs, obs)
+                fs_ref[obs], fb_ref[obs] = fit_obj.get_fluxes(A_ref, f_obs, ferr_obs**2)
+            
+            # --- NOW, PLOT EVERYTHING IN THIS CONSISTENT FRAME ---
 
-                # data
+            # Plot the initial "truth" model (red dashed line)
+            tt = np.linspace(np.min(event_fit.data[0][0]), np.max(event_fit.data[0][0]), 2000)
+            A0_fit = event_fit.get_magnification(tt, obs=0)
+            ax1.plot(tt, A0_fit, '--', color='r', alpha=0.7, zorder=5, label='Initial Guess')
+            
+            # Get posterior samples for plotting
+            flat_chain = res.get_chain(flat=True)
+            samples = prior_transform(fit_obj, flat_chain, truths['params'], prange_linear, prange_log, normal=True)
+            
+            # Plot random posterior samples (blue lines)
+            chain_index = np.random.randint(0, len(samples), ns)
+            for i in range(ns):
+                p = samples[chain_index[i], :]
+                event_fit.set_params(p)
+                A_p = event_fit.get_magnification(tt, obs=0)
+                ax1.plot(tt, A_p, '-', color='blue', alpha=0.1, zorder=10)
+            
+            # Plot residuals of samples relative to the true model
+            event_fit.set_params(p0) # reset to truth for residual calculation
+            A_truth_on_data_grid = event_fit.get_magnification(event_fit.data[0][0], obs=0)
+            for i in range(ns):
+                p = samples[chain_index[i], :]
+                event_fit.set_params(p)
+                A_p_on_data_grid = event_fit.get_magnification(event_fit.data[0][0], obs=0)
+                ax2.plot(event_fit.data[0][0], A_p_on_data_grid - A_truth_on_data_grid, '-', color='blue', alpha=0.05, zorder=10)
+
+            # Loop through observatories to plot data points
+            for obs in event_fit.data.keys():
                 t = event_fit.data[obs][0]
                 f = event_fit.data[obs][1]
-                f_err = event_fit.data[obs][2]
-                f_true = event_fit.data[obs][3]
-                f_err_true = event_fit.data[obs][4]
-                tt = np.linspace(np.min(t), np.max(t), 1000)
-
-
-                if obs==0:
-                    # plotting the initial model
-                    p0 = prior_transform(fit_obj, 
-                                         np.array([0.5]*ndim), 
-                                         truths['params'], 
-                                         bounds, 
-                                         normal)
-                    p = prior_transform(fit_obj, 
-                                        flat_chain[int(flat_chain.shape[0]/2):], 
-                                        truths['params'], 
-                                        bounds, 
-                                        normal
-                                        )
-                    event_fit.set_params(p0)
-                    A0_fit = event_fit.get_magnification(tt, obs)
-                    ax1.plot(tt, A0_fit, '--', color='r', alpha=0.5, zorder=5)
-                    ax2.plot(tt, np.zeros_like(tt), '--', color='r', alpha=0.5, zorder=0)
-
-
-                    # plotting random samples
-                    # samples shape = (nwalkers, nsteps, ndim)
-                    chain_index = np.random.randint(0, samples.shape[0], ns)
-                    for i in range(ns):  # ns is the number of samples to plot
-                        p = samples[chain_index[i], :]
-                        event_fit.set_params(p)
-                        A_p = event_fit.get_magnification(tt, obs)
-
-                        ax1.plot(tt, A_p, '-', color='blue', alpha=0.1, zorder=10)
-                        ax2.plot(tt, A_p - A0_fit, '-', color='blue', alpha=0.05, zorder=10)
-
-
-                # plotting the data in magnification space
-                A_fit_in_data_scape = event_fit.get_magnification(t, obs)
-                f0s, f0b = fit_obj.get_fluxes(A_fit_in_data_scape, f, f_err**2)
-                A_data = (f - f0b)/f0s
+                
+                # Convert data flux to magnification using the STORED reference fs and fb
+                A_data = (f - fb_ref[obs]) / fs_ref[obs]
                 ax1.plot(t, A_data, '.', color=colours[obs], label=data_labels[obs], alpha=0.5, zorder=1)
 
-
-                # plotting the residuals
-                ftrues, ftrueb = fit_obj.get_fluxes(A_fit_in_data_scape, f_true, f_err_true**2)
-                A_true = (f_true - ftrueb)/ftrues
-                if obs==0:
-                    ax2.plot(t, A_data - A_true, '.', color='k', label=data_labels[obs], alpha=0.2, zorder=1)
+                # Plot residuals of data relative to the true model
+                if obs == 0:
+                    A_truth_on_data_grid = event_fit.get_magnification(t, obs)
+                    ax2.plot(t, A_data - A_truth_on_data_grid, '.', color='k', alpha=0.2, zorder=1)
 
 
             ax1.set_ylabel('Magnification')
             ax2.set_ylabel('Residuals')
             ax2.set_xlabel('BJD')
-            ax1.set_title('s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, \ntE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f' %tuple(event_fit.true_params)) 
+            ax1.set_title('s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, \\ntE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f' % tuple(truths['params']))
             ax1.legend()
 
             plt.savefig(path+'posteriors/'+event_name+'_lightcurve_samples.png', dpi=300)
-            plt.close()                 
+            plt.close()
         #------------------------------------------------
 
 

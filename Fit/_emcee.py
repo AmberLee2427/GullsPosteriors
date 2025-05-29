@@ -14,27 +14,29 @@ mp.set_start_method('fork', force=True)
 
 
 
-def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, truths, bounds, normal, threads=1, event_name='', path='./', labels=None):
+# In Fit/_emcee.py
+
+def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, truths, prange_linear, prange_log, normal, threads=1, event_name='', path='./', labels=None):
+    """
+    Edited run_emcee function.
+    'bounds' has been replaced by 'prange_linear' and 'prange_log'.
+    """
+    # The new arguments to be passed to the log probability function
+    log_prob_args = [event_obj, truths, prange_linear, prange_log, normal]
+
     if threads > 1:
         with Pool(threads) as pool:
-            # Initialize the sampler
-            sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=[event_obj, truths, bounds, normal], pool=pool)
+            # Initialize the sampler with the new arguments
+            sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=log_prob_args, pool=pool)
 
+            # --- The rest of the function is identical ---
             # Run the sampler
             count = 0
             steps = 0
             while steps < mi:
-                #print('Debug main: loop', count)
                 state, lnp, _ = sampler.run_mcmc(state, stepi, progress=True)
-                chain = sampler.chain
                 flatchain = sampler.flatchain
-                lnprobability = sampler.lnprobability
                 flatlnprobability = sampler.flatlnprobability
-
-                # Save the sampler as a pickle file
-                #with open(path+'posteriors/'+event_name+'_emcee_sampler.pkl', 'wb') as f:
-                #    pickle.dump(sampler, f)
-                # can't pickle the sampler object because of the VBM parent object
 
                 # Save the samples
                 np.save(path+'posteriors/'+event_name+'_emcee_samples.npy', flatchain)
@@ -47,23 +49,17 @@ def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, tr
                 count += 1
                 
     else:
-        # Initialize the sampler
-        sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=[event_obj, truths, bounds, normal])
+        # Initialize the sampler with the new arguments
+        sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=log_prob_args)
 
+        # --- The rest of the function is identical ---
         # Run the sampler
         steps = 0
         count = 0
         while steps < mi:
-            #print('Debug main: loop', count)
             state, lnp, _ = sampler.run_mcmc(state, stepi, progress=True)
-            chain = sampler.chain
             flatchain = sampler.flatchain
-            lnprobability = sampler.lnprobability
             flatlnprobability = sampler.flatlnprobability
-
-            # Save the sampler as a pickle file
-            #with open(path+'posteriors/'+event_name+'_emcee_sampler.pkl', 'wb') as f:
-            #    pickle.dump(sampler, f)
 
             # Save the samples
             np.save(path+'posteriors/'+event_name+'_emcee_samples.npy', flatchain)
@@ -77,13 +73,23 @@ def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, tr
     
     return sampler
 
-def lnprob_transform(self, u, event, true, prange, normal=False):
-    '''Transform the unit cube to the parameter space and calculate the log probability.'''
-        
+# In Fit/_emcee.py
+
+def lnprob_transform(self, u, event, true, prange_linear, prange_log, normal=False):
+    '''
+    Edited lnprob_transform function.
+    Transforms the unit cube to the parameter space and calculates the log probability.
+    'prange' has been replaced by 'prange_linear' and 'prange_log'.
+    '''
+    # Check if any walker is somehow outside the unit cube.
     for uu in u:
-        if uu < 0.0 or uu > 1.0:
+        if not (0.0 <= uu <= 1.0):
             return -np.inf
-    theta = self.prior_transform(u, true, prange, normal)
+            
+    # Call the new, improved prior_transform with the correct arguments
+    theta = self.prior_transform(u, true, prange_linear, prange_log, normal)
+    
+    # Calculate the log probability (likelihood) with the transformed parameters
     lp = self.lnprob(theta, event)
         
     return lp
