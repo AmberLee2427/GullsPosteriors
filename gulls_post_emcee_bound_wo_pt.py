@@ -834,9 +834,9 @@ if __name__ == '__main__':
         # Set up the sampler
         normal = True
         # Define the number of walkers and the initial positions of the walkers
-        nl = 50  # number of live walkers
-        mi = 1000  # max iterations
-        stepi = 20  # steps between saving the sampler 
+        nl = 200  # number of live walkers
+        mi = 2000  # max iterations
+        stepi = 100  # steps between saving the sampler 
         u0 = np.ones((nl, ndim)) * 0.5
         initial_pos = u0 + 1e-12 * np.random.rand(nl, ndim)
         labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
