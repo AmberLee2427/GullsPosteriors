@@ -1,0 +1,44 @@
+# Ignore log files
+*.log
+log.*
+
+# Ignore image files
+*.png
+
+# Ignore NumPy files
+*.npy
+
+# Ignore LC files
+*.lc
+*.lcdata
+
+# Ignore Fisher matrix files
+*.det.fm.0
+
+# Ignore text and CSV files
+*.txt
+*.csv 
+
+# Ignore DS Store
+.DS_Store
+
+# Ignore pickled outputs
+*.pkl
+
+# VSCode stuff
+.vscode
+
+# Ignore state objects
+*.out.hdf5
+*.out.pkl
+*.out.txt
+*.out.csv
+*.out.json
+
+# Ignore compressed files
+*.gz
+*.bz2
+*.tar
+*.zip
+*.rar
+*.7z
