@@ -712,7 +712,7 @@ if __name__ == '__main__':
         # Prior Volume
         # I think these ranges need to stay the same for the logz values to be comparable
         # check how big these uncertainties normally are and adjust the ranges accordingly
-        p_unc = np.array([0.2, 0.2, 0.5, 0.5, 0.1, 1.0, 5.0, 5.0, 10.0, np.pi/2.0, np.pi/2.0, 0.4])
+        p_unc = np.array([0.05, 0.05, 0.1, 0.1, 0.05, 0.5, 2.5, 2.5, 5.0, np.pi/2.0, np.pi/2.0, 0.2])
         print('\n u prior uncertainty bounds = ', p_unc)
 
 
@@ -723,10 +723,10 @@ if __name__ == '__main__':
         # This is now the desired uncertainty in log10 space.
         # Example: a log-uncertainty of 0.3 means a factor of 10**0.3 ~= 2
         p_unc_log_space = np.array([
-            0.3, # s: e.g., factor of 2
-            0.3, # q: e.g., factor of 2
-            0.3, # rho: e.g., factor of 2
-            0.1  # period: e.g., factor of 1.25
+            0.1, # s: e.g., factor of 2
+            0.1, # q: e.g., factor of 2
+            0.1, # rho: e.g., factor of 2
+            0.05  # period: e.g., factor of 1.25
         ])
         prange_log = p_unc_log_space * 2.0
 
@@ -838,7 +838,7 @@ if __name__ == '__main__':
         mi = 2000  # max iterations
         stepi = 100  # steps between saving the sampler 
         u0 = np.ones((nl, ndim)) * 0.5
-        initial_pos = u0 + 1e-12 * np.random.rand(nl, ndim)
+        initial_pos = u0 + 1e-10 * np.random.rand(nl, ndim)
         labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
         bounds = p_unc*2.0
         normal = True
