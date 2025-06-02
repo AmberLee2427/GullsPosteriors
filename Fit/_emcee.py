@@ -13,9 +13,6 @@ import multiprocessing as mp
 mp.set_start_method('fork', force=True)
 
 
-
-# In Fit/_emcee.py
-
 def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, truths, prange_linear, prange_log, normal, threads=1, event_name='', path='./', labels=None):
     """
     Edited run_emcee function.
@@ -73,7 +70,6 @@ def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, tr
     
     return sampler
 
-# In Fit/_emcee.py
 
 def lnprob_transform(self, u, event, true, prange_linear, prange_log, normal=False):
     '''
@@ -130,9 +126,16 @@ def plot_chain(self, res, event_name, path, labels=None, pt_args=[]):
     fig.savefig(path+'posteriors/'+event_name+'_chain.png')
     plt.close(fig)
 
+
 def corner_post(self, samples, event_name, path, truths):
-    labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
-    fig = corner.corner(samples, labels=labels, truths=truths['params'])
+    if self.LOM_enabled:
+        labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
+        true_params = truths['params']
+    else:
+        labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN']
+        true_params = truths['params'][:9] # Use only the first 9 truth values
+
+    fig = corner.corner(samples, labels=labels, truths=true_params)
     plt.title(event_name)
 
     fig.savefig(path+'posteriors/'+event_name+'_corner.png')

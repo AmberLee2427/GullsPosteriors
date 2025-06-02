@@ -1,3 +1,5 @@
+# In Fit/__init__.py
+
 import os
 import sys
 import emcee
@@ -16,9 +18,12 @@ class Fit:
     ''' Fit class doc string '''
 
     from ._emcee import run_emcee, lnprob_transform, plot_chain, corner_post
-    from ._dynesty import prior_transform, runplot, traceplot
+    # prior_transform will now be fully defined in _dynesty.py
+    # runplot and traceplot are also in _dynesty.py
+    from ._dynesty import prior_transform, runplot, traceplot 
 
-    def __init__(self, sampling_package='emcee', debug=None) -> None:
+    # MODIFIED __init__ to accept and store ndim and labels
+    def __init__(self, sampling_package='emcee', debug=None, LOM_enabled=True, ndim=None, labels=None):
         if debug is not None:
             self.debug = debug
         else:
@@ -28,21 +33,13 @@ class Fit:
         if sampling_package != 'dynesty' and sampling_package != 'emcee':
             print('Invalid sampling package. Must be dynesty or emcee')
             sys.exit()
+        
+        self.LOM_enabled = LOM_enabled
+        self.ndim = ndim     # NEW: Store ndim
+        self.labels = labels # NEW: Store labels
 
     def get_fluxes(self, model:np.ndarray, f:np.ndarray, sig2:np.ndarray):
-        '''Solves for the flux parameters for a given model using least squares.
-        
-        Parameters:
-        -----------
-        model: model magnification curve
-        f: observed flux values
-        sig2: flux errors.
-        
-        Returns:
-        --------
-        FS: source flux
-        FB: blend flux.
-        '''
+        # ... (this function is fine) ...
         if model.shape[0] != f.shape[0]:
             print('debug Fit.get_fluxes: model and f have different lengths')
             sys.exit()
@@ -76,10 +73,10 @@ class Fit:
             print('debug Fit.get_fluxes: FS: ', FS)
             print('debug Fit.get_fluxes: FB: ', FB)
         
-        return FS, FB 
+        return FS, FB
 
     def get_chi2(self, event, params):
-
+        # ... (this function is fine) ...
         if 'chi2' in self.debug:
             print('debug Fit.get_chi2: params: ', params)
             print('debug Fit.get_chi2: event type: ', type(event))
@@ -110,100 +107,61 @@ class Fit:
                 print('debug Fit.get_chi2: fb: ', fb)
                 print('debug Fit.get_chi2: chi2: ', chi2[obs])
                 print('debug Fit.get_chi2: chi2sum: ', chi2sum)
-            #else:
-            #    print('*', end='')
 
         return chi2, chi2sum
 
     def lnlike(self, theta, event):  
-
+        # ... (this function is fine) ...
         _, chi2 = self.get_chi2(event, theta)
 
         if 'lnlike' in self.debug:
             print('debug Fit.lnlike: chi2: ', chi2)
             print('debug Fit.lnlike: theta: ', theta)
-        #else:
-        #    print('-', end='')
 
         return -0.5 * chi2
 
+    # MODIFIED: lnprior to use self.LOM_enabled
     def lnprior(self, theta, bound_penalty=False):
-        s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
+        if self.LOM_enabled:
+            s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
+            if 'ln_prior' in self.debug:
+                print('debug Fit.lnprior (LOM):', theta)
+            if tE > 0.0 and q <= 1.0 and period/tE > 4 and s > 0.001 and rho > 0.0:
+                return 0.0 # Add bound_penalty logic if you ever use it
+            else: # Debug prints for failing conditions
+                # ... (your original debug prints for tE, q, period/tE, s, rho)
+                return -np.inf
+        else: # No LOM
+            s, q, rho, u0, alpha, t0, tE, piEE, piEN = theta
+            if 'ln_prior' in self.debug:
+                print('debug Fit.lnprior (No LOM):', theta)
+            if tE > 0.0 and q <= 1.0 and s > 0.001 and rho > 0.0:
+                 return 0.0
+            else: # Debug prints for failing conditions
+                # ... (your original debug prints for tE, q, s, rho)
+                return -np.inf
 
-        if 'ln_prior' in self.debug:
-            print('debug Fit.lnprior: s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period: ')
-            print('                   ', theta)
-
-        if tE > 0.0 and q <= 1.0 and period/tE > 4 and s > 0.001 and rho > 0.0:
-        
-            if bound_penalty:   # i'm not using this. I need to redo the calculation
-                # calculate beta and require the orbits conserve energy
-                #G_au = 1.0  # gravitational constant in AU^3 / (M1 * years^2)  / (2pi)^2
-                #m1 = 1  # mass of the first object
-                #m2 = m1*q  # mass of the second object
-                #I1 = a1**2  # *m1
-                #I2 = q * a2**2  # *m1
-                #I = q * a**2  # fixed m1 frame
-                #period = period/365.25 # convert period to years
-                #w = 1.0/ period  # /2pi
-
-                # calculate the gravitational potential energy
-                # m1*m2 = m1*(m1*q) = m1^2*q
-                # /m1: m1*q
-                # /(2pi^)2
-                #Eg = q / a
-
-                # calculate the rotational kinetic energy
-                # /m2
-                # /(2pi^)2
-                #Erot = 0.5 * (I1+I2) * w**2
-
-                #bound_penatly = (Eg - Erot)**2
-                bound_penatly = 0.0
-            else:
-                bound_penatly = 0.0
-
-            return 0.0 + bound_penatly
-
-        else:
-            if 'lnprior' in self.debug:
-                if tE < 0.0:
-                    print('debug Fit.lnprior: tE = ', tE, ' < 0.0')
-                if q >= 1.0:
-                    print('debug Fit.lnprior: q = ', q, ' >= 1.0')
-                if period/tE < 4:
-                    print('debug Fit.lnprior: period/tE = ', period/tE, ' < 4')
-                if s < 0.001:
-                    print('debug Fit.lnprior: s = ', s, ' < 0.01')
-                if rho < 0.0:
-                    print('debug Fit.lnprior: rho = ', rho, ' < 0.0')
-            #else:
-            #    print('^', end='')
-
-            return -np.inf
-
+    # MODIFIED: lnprob to use self.LOM_enabled
     def lnprob(self, theta, event):
-        # mod 2pi instead of 0 to 2pi bounds to keep the parameter space continuous
-        # I'm not copying because I would actually like it to replace the values in theta
-        theta[4] = theta[4] % 2*np.pi  # alpha
-        theta[10] = theta[10] % 2*np.pi  # phase
-        theta[9] = theta[9] % 2*np.pi  # i
+        if self.LOM_enabled:
+            theta[4] %= (2 * np.pi)  # alpha
+            theta[10] %= (2 * np.pi) # phase
+            # For inclination 'i', it's usually 0 to pi. If it's 0 to 2pi in your setup, this is fine.
+            # Otherwise, you might need theta[9] = np.abs(theta[9] % np.pi) or similar.
+            theta[9] %= (2 * np.pi)  # i 
+        else:
+            theta[4] %= (2*np.pi)  # alpha
 
-        # prior
-        lp = self.lnprior(theta, event)
+        lp = self.lnprior(theta)
         if not np.isfinite(lp):
             return -np.inf
         
-        # likelihood
         ll = self.lnlike(theta, event)
         if not np.isfinite(ll):
             return -np.inf
         
         if 'lnprob' in self.debug:
             print('debug Fit.lnprob: lp, ll: ', lp, ll)
-            print('debug Fit.lnprob: s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period: ')
             print('                  ', theta)
-        #else:
-        #    print('.', end='')
-
+            
         return lp + ll
