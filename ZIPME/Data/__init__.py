@@ -15,6 +15,15 @@ import warnings
 class Data:
 
     def __init__(self):
+        """Create an empty container for event data.
+
+        Notes
+        -----
+        The constructor performs no I/O.  Calls to :meth:`new_event` will
+        create or modify ``emcee_run_list.txt`` and ``emcee_complete.txt`` in
+        the provided directory.
+        """
+
         pass
 
     def new_event(self, path, sort='alphanumeric'):

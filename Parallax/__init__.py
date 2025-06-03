@@ -47,6 +47,20 @@ class Parallax:
         epochs : dict, optional
             Dictionary mapping observatory names to the epochs of ``tu``.
 
+        Attributes
+        ----------
+        ra, dec : :class:`astropy.units.Quantity`
+            Coordinates of the microlensing event.
+        orbit : Orbit
+            Observatory ephemerides.
+        tref : float
+            Reference time used to centre the parallax shift.
+        xref, vref : `numpy.ndarray`
+            Observatory position and velocity at ``t_ref``.
+        tu, ne : dict or None
+            Pre-computed shifts in ``(\tau, u)`` and north/east coordinates
+            indexed by observatory name when provided.
+
         Notes
         -----
         When ``tu`` is supplied the shift is immediately converted to north and
