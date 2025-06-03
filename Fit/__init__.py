@@ -17,20 +17,38 @@ import multiprocessing as mp
 
 
 class Fit:
-    """Fit microlensing models using ``emcee`` or ``dynesty``.
+    """Wrapper for fitting microlensing models.
+
+    The class interfaces with either the :mod:`emcee` ensemble sampler or the
+    :mod:`dynesty` nested sampler to explore parameter space.  In addition to
+    providing log-likelihood and prior calculations, it exposes a number of
+    helper routines for running the samplers and generating diagnostic plots.
 
     Parameters
     ----------
     sampling_package : {'emcee', 'dynesty'}, optional
-        Choice of sampling backend.
+        Backend used for sampling.
     debug : list of str or None, optional
-        Flags controlling verbose debug output.
+        Substrings enabling verbose debug output.
     LOM_enabled : bool, optional
-        Include lens orbital motion terms when ``True``.
-    ndim : int, optional
-        Number of parameters in the model.
+        If ``True``, include lens orbital motion parameters in the model.
+    ndim : int or None, optional
+        Number of free parameters.
     labels : list of str or None, optional
-        Parameter labels used in diagnostic plots.
+        Parameter labels used when creating plots.
+
+    Attributes
+    ----------
+    sampling_package : str
+        Name of the sampling backend currently in use.
+    debug : list of str
+        Keywords that activate additional console output.
+    LOM_enabled : bool
+        Flag indicating whether orbital motion parameters are fitted.
+    ndim : int or None
+        Dimensionality of the model.
+    labels : list of str or None
+        Labels corresponding to each model parameter.
     """
 
     from ._emcee import run_emcee, lnprob_transform, plot_chain, corner_post
