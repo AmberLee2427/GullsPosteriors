@@ -102,36 +102,47 @@ class Data:
             return event_name, truths, data
 
     def load_data(self, data_file):
-        r'''load the data file.
-        
-        Notes:
-        ------
+        r"""Load a Data Challenge lightcurve file.
+
+        Parameters
+        ----------
+        data_file : str
+            Path to the whitespace separated file containing the lightcurve.
+
+        Returns
+        -------
+        dict
+            Keys are observatory codes and values are ``(N, 8)`` arrays for that
+            observatory.
+
+        Notes
+        -----
         The lightcurve columns are:
-            [0] Simulation_time 
-            [1] measured_relative_flux 
-            [2] measured_relative_flux_error 
+            [0] Simulation_time
+            [1] measured_relative_flux
+            [2] measured_relative_flux_error
             [3] true_relative_flux
-            [4] true_relative_flux_error 
-            [5] observatory_code 
-            [6] saturation_flag 
-            [7] best_single_lens_fit 
+            [4] true_relative_flux_error
+            [5] observatory_code
+            [6] saturation_flag
+            [7] best_single_lens_fit
             [8] parallax_shift_t
-            [9] parallax_shift_u 
-            [10] BJD 
-            [11] source_x 
-            [12] source_y 
-            [13] lens1_x 
-            [14] lens1_y 
-            [15] lens2_x 
+            [9] parallax_shift_u
+            [10] BJD
+            [11] source_x
+            [12] source_y
+            [13] lens1_x
+            [14] lens1_y
+            [15] lens2_x
             [16] lens2_y
 
         Magnitudes can be computed using:
-    
+
         ..math:
             m = m_{source} + 2.5 log f_s - 2.5 log{F}
 
         where :math:`F=fs*\mu + (1-fs)` is the relative flux (in the file), :math:`\mu` is the magnification, and
-        
+
         ..math:
             \sigma_m = 2.5/ln{10} \sigma_F/F.
 
@@ -147,7 +158,7 @@ class Data:
         Lenses with masses smaller than the isochrone grid limits (I believe 0.1 MSun, will have filler values for magnitudes
         and lens stellar properties).
         There may be some spurious detections in the list where the single lens fit failed. Please let dev know if you find any
-        of these events so that we can improve the single lens fitter.'''
+        of these events so that we can improve the single lens fitter."""
 
         header = ['Simulation_time', 
                   'measured_relative_flux', 
