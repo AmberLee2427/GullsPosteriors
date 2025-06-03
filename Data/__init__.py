@@ -18,7 +18,41 @@ class Data:
         pass
 
     def new_event(self, path, sort='alphanumeric'):
-        '''get the data and true params for the next event'''
+        r"""Return the next lightcurve and its true parameters.
+
+        Parameters
+        ----------
+        path : str
+            Directory containing the Data Challenge files.  The directory must
+            include the master ``*.csv`` file as well as the ``*.det.lc``
+            lightcurve files.
+        sort : str, optional
+            Selection method for the next event.  Only ``'alphanumeric'`` is
+            currently supported and will process files in lexicographic order.
+
+        Returns
+        -------
+        tuple
+            ``(event_name, truths, data)`` where ``event_name`` is the event
+            identifier, ``truths`` is a :class:`pandas.Series` with the event
+            parameters and additional derived values, and ``data`` is the
+            dictionary returned by :meth:`load_data`.
+
+        Notes
+        -----
+        The function maintains two files in ``path``:
+
+        ``emcee_run_list.txt``
+            Records lightcurve files that have been processed.  The file will be
+            created if it does not already exist and the selected file will be
+            appended to it.
+        ``emcee_complete.txt``
+            Created if missing.  The file is not modified by this routine but is
+            expected by later stages of the pipeline.
+
+        ``new_event`` modifies ``emcee_run_list.txt`` on every successful call
+        and therefore has file-system side effects.
+        """
 
         files = os.listdir(path)
         files = sorted(files)
