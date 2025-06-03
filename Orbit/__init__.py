@@ -33,6 +33,17 @@ class Orbit:
         self.epochs, self.positions, self.velocities = self.fetch_horizons_data()
 
     def fetch_horizons_data(self):
+        """Query JPL Horizons for observatory ephemerides.
+
+        This method does not take any arguments and uses the instance
+        attributes configured at initialisation.
+
+        Returns
+        -------
+        tuple(Time, CartesianRepresentation, CartesianDifferential)
+            Times, positions and velocities describing the observatory
+            trajectory.
+        """
         times = np.linspace(self.start_time.jd, self.end_time.jd, self.n_epochs)
         times = Time(times, format='jd')
 
