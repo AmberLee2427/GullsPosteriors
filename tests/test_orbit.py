@@ -1,3 +1,5 @@
+"""Tests for the :mod:`Orbit` module."""
+
 import os
 import sys
 import numpy as np
