@@ -8,15 +8,38 @@ from scipy.interpolate import interp1d
 
 class Orbit:
 
-    def __init__(self, 
-                 obs_location='SEMB-L2', 
+    def __init__(self,
+                 obs_location='SEMB-L2',
                  start_date='2018-04-25',
-                 end_date='2023-05-30', 
-                 refplane='ecliptic', 
+                 end_date='2023-05-30',
+                 refplane='ecliptic',
                  n_epochs=None,
                  origin='500@10',
                  date_format='iso'):
-        '''Position file from JPL Horizons'''
+        """Query JPL Horizons and store the observatory ephemeris.
+
+        Parameters
+        ----------
+        obs_location : str, optional
+            Horizons identifier for the observatory.
+        start_date, end_date : str, optional
+            Start and end dates of the ephemeris in the format given by
+            ``date_format``.
+        refplane : str, optional
+            Reference plane used for the coordinates (e.g. ``'ecliptic'``).
+        n_epochs : int or None, optional
+            Number of epochs to sample.  If ``None`` a daily cadence between
+            ``start_date`` and ``end_date`` is used.
+        origin : str, optional
+            Horizons origin code.
+        date_format : str, optional
+            Format string understood by :class:`~astropy.time.Time`.
+
+        Notes
+        -----
+        The sampled times, positions and velocities are stored on the instance
+        as ``epochs``, ``positions`` and ``velocities`` respectively.
+        """
 
         self.start_time = Time(start_date, format=date_format)
         self.end_time = Time(end_date, format=date_format)
@@ -75,7 +98,20 @@ class Orbit:
         return times, positions, velocities
 
     def get_pos(self, t):
-        '''get the position of the observatory at time t by interpolating the position file'''
+        """Return the observatory position at the given time.
+
+        Parameters
+        ----------
+        t : float or array_like
+            Times at which to evaluate the position expressed in Julian
+            days.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(3, N)`` array containing ``x``, ``y`` and ``z`` coordinates in
+            astronomical units (AU).
+        """
         t = Time(t, format='jd')
         x_interp = interp1d(self.epochs.jd, self.positions.x.to(u.au).value)
         y_interp = interp1d(self.epochs.jd, self.positions.y.to(u.au).value)
@@ -87,7 +123,18 @@ class Orbit:
         return xyz
     
     def get_vel(self, t):
-        '''get the velocity of the observatory at time t by interpolating the position file'''
+        """Return the observatory velocity at the given time.
+
+        Parameters
+        ----------
+        t : float or array_like
+            Times at which to evaluate the velocity expressed in Julian days.
+
+        Returns
+        -------
+        astropy.units.Quantity
+            ``(3, N)`` array of ``vx``, ``vy`` and ``vz`` in AU per day.
+        """
         t = Time(t, format='jd')
         vx_interp = interp1d(self.epochs.jd, self.velocities.d_x.to(u.au / u.day).value)
         vy_interp = interp1d(self.epochs.jd, self.velocities.d_y.to(u.au / u.day).value)
