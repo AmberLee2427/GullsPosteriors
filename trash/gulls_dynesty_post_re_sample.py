@@ -283,14 +283,32 @@ class Event:
         piEE = params[8]
         self.parallax.update_piE_NE(self, piEN, piEE)
 
-    def projected_seperation(self, i, period, t, phase_offset=0.0, a=1.0):
-        '''Calculate the projected seperation of the binary'''
+    def projected_separation(self, i, period, t, phase_offset=0.0, a=1.0):
+        """Calculate the projected separation of the binary lens.
 
-        # i is the inclination of the orbit in radians
-        # period is the period of the orbit (if t is tau then period is in units of tE)
-        # t is the time relative to t0 (t')
-        # phase_offset is the phase at t0
-        # a is the semi-major axis of the orbit
+        Parameters
+        ----------
+        i : float or array_like
+            Inclination of the orbit in radians.
+        period : float or array_like
+            Orbital period.  If ``t`` is given in units of ``tE`` then
+            ``period`` must be as well.
+        t : float or array_like
+            Time relative to ``t0``.
+        phase_offset : float, optional
+            Initial orbital phase in radians. Default is ``0.0``.
+        a : float, optional
+            Semimajor axis in units of ``theta_E``. Default is ``1.0``.
+
+        Returns
+        -------
+        s : float or ndarray
+            Projected separation of the two components.
+        x : float or ndarray
+            X-coordinate of the secondary relative to the primary.
+        y : float or ndarray
+            Y-coordinate of the secondary relative to the primary.
+        """
 
         phase = 2 * np.pi * (t) / period + phase_offset
         x = a * np.cos(phase)
@@ -315,7 +333,7 @@ class Event:
         phase0 = self.params[10].copy()  # phase at time t0
         period = self.params[11].copy()  # planet orbital period
 
-        s0, _, _ = self.projected_seperation(i, period, 0.0, phase0)
+        s0, _, _ = self.projected_separation(i, period, 0.0, phase0)
         a = s/s0  # semimajor axis in uits of thetaE
 
         a1 = q/(1.0+q) * a
@@ -338,8 +356,8 @@ class Event:
         tau = (t - t0) / tE  # event time in units of tE
 
         # Orbital motion - dsdt
-        s1, x1, y1 = self.projected_seperation(i, period/tE, tau, phase0+np.pi, a1)  # star
-        s2, x2, y2 = self.projected_seperation(i, period/tE, tau, phase0, a2)  # planet
+        s1, x1, y1 = self.projected_separation(i, period/tE, tau, phase0+np.pi, a1)  # star
+        s2, x2, y2 = self.projected_separation(i, period/tE, tau, phase0, a2)  # planet
         ss = np.sqrt((x2 - x1)**2+(y2 - y1)**2)  # i don't know that this is strictly necessary since they are always opposite
         print('debug: s: ', ss, s1+s2)  # these should be equal, I think
 
@@ -438,7 +456,7 @@ def lnlike(theta, event):
 def lnprior(theta, event, bound_penalty=False):
     s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
     sinphase = np.sin(phase)
-    s0 = event.projected_seperation(i, period/tE, 0.0, phase)
+    s0 = event.projected_separation(i, period/tE, 0.0, phase)
     if tE > 0.0 and q <= 1.0 and period/tE > 4 and sinphase < 0.9 and sinphase >= 0.00 and i <= np.pi/2 and i >= 0 and s0 > 0.0:
     
         if bound_penalty:   # i'm not using this. I need to redo the calculation
