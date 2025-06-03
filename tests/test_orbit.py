@@ -1,4 +1,10 @@
-"""Tests for the :mod:`Orbit` module."""
+"""Unit tests exercising the :mod:`Orbit` helper class.
+
+The tests here ensure that a simple ``Orbit`` instance can return
+interpolated positions and velocities at arbitrary epochs.  The helper
+function :func:`create_test_orbit` builds a tiny synthetic orbit used by
+the test cases.
+"""
 
 import os
 import sys
@@ -14,6 +20,12 @@ from Orbit import Orbit
 
 
 def create_test_orbit():
+    """Return a minimal ``Orbit`` instance for testing.
+
+    The orbit is constructed directly without reading from files and
+    contains a few epochs with associated Cartesian position and
+    velocity vectors so that interpolation can be tested deterministically.
+    """
     epochs = Time([0, 1, 2], format="jd")
     positions = CartesianRepresentation(
         [0, 1, 2] * u.au,
@@ -33,6 +45,13 @@ def create_test_orbit():
 
 
 def test_get_pos_and_vel():
+    """Check ``Orbit.get_pos`` and ``Orbit.get_vel`` interpolation.
+
+    The test queries an ``Orbit`` built by :func:`create_test_orbit` at
+    epochs between the defined samples and verifies that the returned
+    arrays have the expected shapes, values and units.
+    """
+
     orbit = create_test_orbit()
     times = [0, 1.5]
     pos = orbit.get_pos(times)
