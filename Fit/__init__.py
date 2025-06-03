@@ -39,7 +39,24 @@ class Fit:
         self.labels = labels # NEW: Store labels
 
     def get_fluxes(self, model:np.ndarray, f:np.ndarray, sig2:np.ndarray):
-        # ... (this function is fine) ...
+        """Solve for the source and blend fluxes.
+
+        Parameters
+        ----------
+        model : numpy.ndarray
+            Model magnification curve.
+        f : numpy.ndarray
+            Observed flux measurements.
+        sig2 : numpy.ndarray
+            Variance of the observed fluxes.
+
+        Returns
+        -------
+        FS : float
+            Best-fit source flux.
+        FB : float
+            Best-fit blend flux.
+        """
         if model.shape[0] != f.shape[0]:
             print('debug Fit.get_fluxes: model and f have different lengths')
             sys.exit()
