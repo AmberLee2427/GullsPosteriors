@@ -1,3 +1,5 @@
+"""Representation of an observatory orbit via JPL Horizons queries."""
+
 import numpy as np
 from astropy.time import Time
 from astropy.coordinates import CartesianRepresentation, CartesianDifferential
@@ -7,6 +9,7 @@ from scipy.interpolate import interp1d
 
 
 class Orbit:
+    """Store ephemerides and provide interpolated positions and velocities."""
 
     def __init__(self,
                  obs_location='SEMB-L2',
