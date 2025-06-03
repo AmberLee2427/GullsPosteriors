@@ -253,7 +253,40 @@ class Data:
         return data_dict
 
     def get_params(self, master_file, event_id, sub_run, field, epoch=None, bjd=None):
-        '''get the true params for the event'''
+        r"""Return the true parameters for an event.
+
+        Parameters
+        ----------
+        master_file : str
+            Path to the master ``*.csv`` file containing event information.
+        event_id : int or str
+            Identifier of the event in ``master_file``.
+        sub_run : int or str
+            Data Challenge sub-run number.
+        field : int or str
+            Field identifier within the Data Challenge.
+        epoch : array-like, optional
+            Simulation epochs used to convert times to BJD.
+        bjd : array-like, optional
+            Barycentric Julian Date corresponding to ``epoch``.
+
+        Returns
+        -------
+        pandas.Series
+            Series of event parameters with additional keys ``params`` and
+            ``tcroin`` that have been converted to BJD.
+
+        Notes
+        -----
+        Several quantities are converted for convenience:
+
+        * ``alpha``, ``Planet_inclination`` and ``Planet_orbphase`` are
+          converted from degrees to radians.
+        * ``t0lens1`` and ``tcroin`` are converted from simulation time to BJD
+          either by interpolation of ``epoch``/``bjd`` or by using the
+          offset determined from the lightcurve.
+        * ``Planet_period`` is converted from years to days.
+        """
         event_id = int(event_id)
         sub_run = int(sub_run)
         field = int(field)
