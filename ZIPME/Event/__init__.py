@@ -20,7 +20,37 @@ class Event:
 
     from ._VBM import magnification
 
-    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict, t_start: float, t_ref: float, eps=1e-4, gamma=0.36):
+    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict,
+                 t_start: float, t_ref: float, eps=1e-4, gamma=0.36):
+        """Instantiate a microlensing event model.
+
+        Parameters
+        ----------
+        parallax : Parallax
+            Parallax helper defining the observer motion.
+        orbit : Orbit
+            Observatory ephemeris used for parallax calculations.
+        data : dict
+            Light curve data keyed by observatory.
+        truths : dict
+            Ground truth parameters for the event containing a ``params``
+            array.
+        t_start : float
+            Start time of the simulation in BJD.
+        t_ref : float
+            Reference epoch for the orbit in BJD.
+        eps : float, optional
+            Numerical precision for magnification evaluation.
+        gamma : float, optional
+            Linear limb darkening coefficient.
+
+        Attributes
+        ----------
+        orbit, parallax, data, t_ref, sim_time0, truths, true_params,
+        params, eps, gamma and ``mag_obj`` correspond to the input arguments
+        and store the current state of the model.
+        """
+
         self.orbit = orbit
         self.parallax = parallax
         self.parallax.set_ref_frame(t_ref)

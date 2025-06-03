@@ -57,7 +57,37 @@ class Fit:
     from ._dynesty import prior_transform, runplot, traceplot 
 
     # MODIFIED __init__ to accept and store ndim and labels
-    def __init__(self, sampling_package='emcee', debug=None, LOM_enabled=True, ndim=None, labels=None):
+    def __init__(self, sampling_package='emcee', debug=None, LOM_enabled=True,
+                 ndim=None, labels=None):
+        """Initialise a sampler wrapper.
+
+        Parameters
+        ----------
+        sampling_package : {'emcee', 'dynesty'}, optional
+            Backend used to perform the sampling.
+        debug : list of str or None, optional
+            Strings enabling additional console output.
+        LOM_enabled : bool, optional
+            Include lens orbital motion parameters when ``True``.
+        ndim : int or None, optional
+            Number of parameters in the model.
+        labels : list of str or None, optional
+            Parameter labels used for corner plots.
+
+        Attributes
+        ----------
+        sampling_package : str
+            Name of the chosen sampling backend.
+        debug : list of str
+            Debug keywords stored from ``debug``.
+        LOM_enabled : bool
+            Flag controlling orbital motion physics.
+        ndim : int or None
+            Dimensionality of the parameter space.
+        labels : list of str or None
+            Labels for each parameter.
+        """
+
         if debug is not None:
             self.debug = debug
         else:

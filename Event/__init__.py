@@ -19,33 +19,75 @@ from Orbit import Orbit
 
 
 class Event:
-    """Microlensing event combining data, parallax and orbital effects.
-
-    Parameters
-    ----------
-    parallax : Parallax
-        Object providing parallax calculations.
-    orbit : Orbit
-        Ephemerides for the observatory.
-    data : dict
-        Light curve data keyed by observatory code.
-    truths : dict
-        True parameters for the event.
-    t_start : float
-        Simulation start time in BJD.
-    t_ref : float
-        Reference time for the orbit.
-    eps : float, optional
-        Numerical precision used in the magnification calculations.
-    gamma : float, optional
-        Linear limb darkening coefficient.
-    LOM_enabled : bool, optional
-        If ``True`` enable orbital motion terms in the magnification.
-    """
+    """Microlensing event combining data, parallax and orbital effects."""
 
     from ._VBM import magnification
 
-    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict, t_start: float, t_ref: float, eps=1e-4, gamma=0.36, LOM_enabled=True):
+    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict,
+                 t_start: float, t_ref: float, eps=1e-4, gamma=0.36,
+                 LOM_enabled=True):
+        """Instantiate a microlensing event model.
+
+        Parameters
+        ----------
+        parallax : Parallax
+            Object providing parallax calculations.
+        orbit : Orbit
+            Ephemerides used to locate the observatory.
+        data : dict
+            Light curve data keyed by observatory code.
+        truths : dict
+            Ground truth parameters of the event.  Must contain a ``params``
+            array used to initialise the model.
+        t_start : float
+            Simulation start time in Barycentric Julian Date.
+        t_ref : float
+            Reference time defining the orientation of the parallax frame.
+        eps : float, optional
+            Numerical precision for the magnification calculation.
+        gamma : float, optional
+            Linear limb darkening coefficient.
+        LOM_enabled : bool, optional
+            If ``True`` include lens orbital motion parameters in the model.
+
+        Attributes
+        ----------
+        orbit : Orbit
+            Copy of the provided orbit object.
+        parallax : Parallax
+            Parallax helper configured with ``t_ref``.
+        data : dict
+            Stored light curve data.
+        t_ref : float
+            Reference epoch for parallax calculations.
+        sim_time0 : float
+            Simulation start time in BJD.
+        truths : dict
+            Truth parameters for the event.
+        true_params : array_like
+            Parameter array extracted from ``truths``.
+        params : array_like
+            Current working parameter array.
+        eps : float
+            Precision used by :mod:`_VBM` for integrations.
+        gamma : float
+            Linear limb darkening coefficient.
+        mag_obj : object or None
+            Backend magnification calculator instance.
+        LOM_enabled : bool
+            Flag controlling orbital motion physics.
+        traj_base_tau, traj_parallax_tau, traj_base_beta, traj_parallax_beta
+            Dictionaries used to store trajectory components for each
+            observatory.
+        traj_base_u1, traj_base_u2, traj_parallax_u1, traj_parallax_u2
+            More trajectory diagnostics keyed by observatory.
+        traj_parallax_dalpha_u1, traj_parallax_dalpha_u2
+            Rotated trajectory coordinates.
+        ss, tau, dalpha : dict
+            Storage for separation, scaled time and rotation of the source
+            trajectory.
+        """
+
         self.orbit = orbit
         self.parallax = parallax
         self.parallax.set_ref_frame(t_ref)

@@ -23,6 +23,16 @@ class Data:
     """
 
     def __init__(self):
+        """Create an empty container for event data.
+
+        Notes
+        -----
+        The constructor does not set any attributes or perform I/O.  Side
+        effects are produced when calling :meth:`new_event` which writes the
+        files ``emcee_run_list.txt`` and ``emcee_complete.txt`` in the
+        specified directory.
+        """
+
         pass
 
     def new_event(self, path, sort='alphanumeric'):
