@@ -2,18 +2,9 @@
 
 # In Fit/__init__.py
 
-import os
 import sys
-import emcee
 import numpy as np
-import pandas as pd
-import pickle
-import corner
-import matplotlib.pyplot as plt
-from scipy.stats import truncnorm
-import time
-from multiprocessing import Pool
-import multiprocessing as mp
+
 
 
 class Fit:
