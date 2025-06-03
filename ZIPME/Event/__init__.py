@@ -58,14 +58,34 @@ class Event:
         piEE = params[8]
         self.parallax.update_piE_NE(piEN, piEE)
 
-    def projected_seperation(self, i, period, t, phase_offset=0.0, t_start=None, a=1.0):
-        '''Calculate the projected seperation of the binary'''
+    def projected_separation(self, i, period, t, phase_offset=0.0, t_start=None, a=1.0):
+        """Calculate the projected separation of the binary lens.
 
-        # i is the inclination of the orbit in radians
-        # period is the period of the orbit (if t is tau then period is in units of tE)
-        # t is the time relative to t0 (t')
-        # phase_offset is the phase at simulation zero time
-        # a is the semi-major axis of the orbit
+        Parameters
+        ----------
+        i : float or array_like
+            Inclination of the orbit in radians.
+        period : float or array_like
+            Orbital period. If ``t`` is measured in units of ``tE`` then
+            ``period`` must be as well.
+        t : float or array_like
+            Time of evaluation.
+        phase_offset : float, optional
+            Phase at ``t_start`` in radians. Default is ``0.0``.
+        t_start : float, optional
+            Reference start time. Defaults to ``self.t_ref``.
+        a : float, optional
+            Semimajor axis in units of ``theta_E``. Default is ``1.0``.
+
+        Returns
+        -------
+        s : float or ndarray
+            Projected separation between the two components.
+        x : float or ndarray
+            X-coordinate of the secondary relative to the primary.
+        y : float or ndarray
+            Y-coordinate of the secondary relative to the primary.
+        """
 
         if t_start is None:
             t_start = self.t_ref
@@ -147,9 +167,9 @@ class Event:
         #print('debug Event.tref2t0: u0_com: ', u0_com)
         # this is ignoring orital motion
 
-        _, sx_ref, sy_ref = self.projected_seperation(i, period, self.t_ref, phase_offset=phase0, t_start=self.t_ref)
-        s_, sx_t0, sy_t0 = self.projected_seperation(i, period, t0, phase_offset=phase0, t_start=self.t_ref)  
-        _, sx_t0_com, sy_t0_com = self.projected_seperation(i, period, t0_com, phase_offset=phase0, t_start=self.t_ref)  
+        _, sx_ref, sy_ref = self.projected_separation(i, period, self.t_ref, phase_offset=phase0, t_start=self.t_ref)
+        s_, sx_t0, sy_t0 = self.projected_separation(i, period, t0, phase_offset=phase0, t_start=self.t_ref)
+        _, sx_t0_com, sy_t0_com = self.projected_separation(i, period, t0_com, phase_offset=phase0, t_start=self.t_ref)
 
         a = s / s_
         rot_ref = np.arctan2(sy_ref, sx_ref)  # again, the size of Sx and Sy are nonsense, but the ratio is valid
@@ -171,7 +191,7 @@ class Event:
         #print('debug Event.tref2t0: alpha_t0_com: ', alpha_t0_com)
         phase0_t0_com = phase0 + (t0_com - self.t_ref) * 2.0 * np.pi / period
 
-        s_com, _, _ = self.projected_seperation(i, period, t0_com, phase_offset=phase0, t_start=self.t_ref)  
+        s_com, _, _ = self.projected_separation(i, period, t0_com, phase_offset=phase0, t_start=self.t_ref)
 
 
         truths['params_t0_L1'] = [s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase0_t0_L1, period]
@@ -242,7 +262,7 @@ class Event:
         s = p[0]  # angular lens seperation at time t0
 
         # Semimajor axis in units of thetaE
-        s_ref, _, _ = self.projected_seperation(i, period, 0.0, phase_offset=phase0, t_start=0.0) 
+        s_ref, _, _ = self.projected_separation(i, period, 0.0, phase_offset=phase0, t_start=0.0)
         a = s/(s_ref)  # angular semimajor axis in uits of thetaE
         #print('debug Event.get_magnification: a/rE:', 
         #      self.truths['Planet_semimajoraxis']/self.truths['rE'], a)
@@ -280,12 +300,12 @@ class Event:
         # this coordinate system is defined at time t_ref with a COM origin
         # let ss be the array of angular lens seperations at each epoch
         # ss does not have a reference frame
-        ss1, x1, y1 = self.projected_seperation(i, period, t, 
+        ss1, x1, y1 = self.projected_separation(i, period, t,
                                                 phase_offset=phase0+np.pi,
                                                 a=a1,
                                                 t_start=t_ref
                                                 )  # star - L1
-        ss2, x2, y2 = self.projected_seperation(i, period, t, 
+        ss2, x2, y2 = self.projected_separation(i, period, t,
                                                 phase_offset=phase0, 
                                                 a=a2, 
                                                 t_start=t_ref
@@ -344,7 +364,7 @@ class Event:
         # Orbital motion - dalphadt
         rot = np.arctan2(y2, x2)  # positions of the planet in the COM-origin, planet-rotation frame
                                   # what is the reference time for this? - currently tref
-        _, x0, y0 = self.projected_seperation(i, period, 0.0, t_start=0.0, phase_offset=phase0, a=a)
+        _, x0, y0 = self.projected_separation(i, period, 0.0, t_start=0.0, phase_offset=phase0, a=a)
         rot0 = np.arctan2(y0, x0)  # at reference time
         # the x, y positions are nonsense wihtout a/a1/a2, but their ratios are valid for the rotation either way
         self.dalpha[obs] = rot - rot0  # saving for debugging
