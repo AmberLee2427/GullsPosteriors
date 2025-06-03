@@ -5,10 +5,7 @@ from dynesty import utils as dyfunc
 # from dynesty import DynamicNestedSampler # Not used
 # from dynesty import NestedSampler # Not used
 import matplotlib.pyplot as plt
-from scipy.stats import truncnorm, norm # norm was missing for normal transform
-import time # Not used here but was in original
-import os # Not used here
-import sys # Not used here
+from scipy.stats import norm
 import numpy as np
 
 

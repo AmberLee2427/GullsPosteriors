@@ -1,6 +1,4 @@
 import numpy as np
-import os
-import sys
 from astropy import units as u
 from astropy import coordinates as astrocoords
 
