@@ -122,6 +122,7 @@ class Fit:
 
     # MODIFIED: lnprior to use self.LOM_enabled
     def lnprior(self, theta, bound_penalty=False):
+
         if self.LOM_enabled:
             s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
             if 'ln_prior' in self.debug:
@@ -149,6 +150,7 @@ class Fit:
             # For inclination 'i', it's usually 0 to pi. If it's 0 to 2pi in your setup, this is fine.
             # Otherwise, you might need theta[9] = np.abs(theta[9] % np.pi) or similar.
             theta[9] %= (2 * np.pi)  # i 
+
         else:
             theta[4] %= (2*np.pi)  # alpha
 
