@@ -93,7 +93,30 @@ class Fit:
         return FS, FB
 
     def get_chi2(self, event, params):
-        # ... (this function is fine) ...
+        """Compute the chi-square values for a given parameter set.
+
+        Parameters
+        ----------
+        event : Event
+            Microlensing event object containing the light curve data and
+            magnification model.
+        params : array_like
+            Parameter values to apply via ``event.set_params``.
+
+        Returns
+        -------
+        dict
+            Dictionary mapping each observatory to its chi-square array.
+        float
+            Total chi-square summed over all observatories.
+
+        Notes
+        -----
+        The method updates ``event`` with ``params`` and then, for each
+        observatory, derives the best-fit source and blend fluxes.  These
+        fluxes are used to compute the chi-square contribution of that
+        observatory which is then accumulated into the total.
+        """
         if 'chi2' in self.debug:
             print('debug Fit.get_chi2: params: ', params)
             print('debug Fit.get_chi2: event type: ', type(event))
