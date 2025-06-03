@@ -1,3 +1,5 @@
+"""Event model including parallax and orbital motion."""
+
 #import multiprocessing
 #multiprocessing.set_start_method('fork', force=True)
 import warnings
@@ -17,6 +19,29 @@ from Orbit import Orbit
 
 
 class Event:
+    """Microlensing event combining data, parallax and orbital effects.
+
+    Parameters
+    ----------
+    parallax : Parallax
+        Object providing parallax calculations.
+    orbit : Orbit
+        Ephemerides for the observatory.
+    data : dict
+        Light curve data keyed by observatory code.
+    truths : dict
+        True parameters for the event.
+    t_start : float
+        Simulation start time in BJD.
+    t_ref : float
+        Reference time for the orbit.
+    eps : float, optional
+        Numerical precision used in the magnification calculations.
+    gamma : float, optional
+        Linear limb darkening coefficient.
+    LOM_enabled : bool, optional
+        If ``True`` enable orbital motion terms in the magnification.
+    """
 
     from ._VBM import magnification
 

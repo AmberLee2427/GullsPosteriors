@@ -1,3 +1,5 @@
+"""Fitting utilities wrapping emcee and dynesty samplers."""
+
 # In Fit/__init__.py
 
 import os
@@ -15,7 +17,21 @@ import multiprocessing as mp
 
 
 class Fit:
-    ''' Fit class doc string '''
+    """Fit microlensing models using ``emcee`` or ``dynesty``.
+
+    Parameters
+    ----------
+    sampling_package : {'emcee', 'dynesty'}, optional
+        Choice of sampling backend.
+    debug : list of str or None, optional
+        Flags controlling verbose debug output.
+    LOM_enabled : bool, optional
+        Include lens orbital motion terms when ``True``.
+    ndim : int, optional
+        Number of parameters in the model.
+    labels : list of str or None, optional
+        Parameter labels used in diagnostic plots.
+    """
 
     from ._emcee import run_emcee, lnprob_transform, plot_chain, corner_post
     # prior_transform will now be fully defined in _dynesty.py
