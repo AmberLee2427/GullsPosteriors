@@ -13,17 +13,34 @@ import multiprocessing as mp
 
 
 class Fit:
-    ''' Fit class doc string '''
+    """Wrapper for fitting microlensing models."""
 
     from ._emcee import run_emcee, lnprob_transform, plot_chain, corner_post
     #from ._dynesty import prior_transform, runplot, traceplot
 
     def __init__(self, sampling_package='emcee', debug=None) -> None:
+        """Initialise the fitting helper.
+
+        Parameters
+        ----------
+        sampling_package : {'emcee', 'dynesty'}, optional
+            Sampler backend to use.
+        debug : list of str or None, optional
+            Keywords enabling verbose output.
+
+        Attributes
+        ----------
+        sampling_package : str
+            Name of the sampling backend.
+        debug : list of str
+            Stored debug keywords.
+        """
+
         if debug is not None:
             self.debug = debug
         else:
             self.debug = []
-    
+
         self.sampling_package = sampling_package
         if sampling_package != 'dynesty' and sampling_package != 'emcee':
             print('Invalid sampling package. Must be dynesty or emcee')

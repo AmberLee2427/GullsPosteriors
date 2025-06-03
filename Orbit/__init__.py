@@ -38,10 +38,24 @@ class Orbit:
         date_format : str, optional
             Format string understood by :class:`~astropy.time.Time`.
 
-        Notes
-        -----
-        The sampled times, positions and velocities are stored on the instance
-        as ``epochs``, ``positions`` and ``velocities`` respectively.
+        Attributes
+        ----------
+        start_time, end_time : :class:`~astropy.time.Time`
+            Parsed representations of ``start_date`` and ``end_date``.
+        n_epochs : int
+            Number of epochs sampled from Horizons.
+        obs_location : str
+            Identifier used in the Horizons query.
+        origin : str
+            Horizons origin code.
+        refplane : str
+            Reference plane of the ephemerides.
+        epochs : :class:`~astropy.time.Time`
+            Sampled times of the ephemeris.
+        positions : :class:`~astropy.coordinates.CartesianRepresentation`
+            Observatory positions at ``epochs``.
+        velocities : :class:`~astropy.coordinates.CartesianDifferential`
+            Observatory velocities at ``epochs``.
         """
 
         self.start_time = Time(start_date, format=date_format)
