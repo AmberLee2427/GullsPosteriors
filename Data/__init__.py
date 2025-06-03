@@ -55,22 +55,22 @@ class Data:
 
                     lc_file_name = file.split('.')[0]
                     event_identifiers = lc_file_name.split('_')
-                    EventID = event_identifiers[-1]
-                    SubRun = event_identifiers[-3]  # the order of these is fucked up
-                    Field = event_identifiers[-2]  # and this one. -A 2024-11-11 resample
+                    event_id = event_identifiers[-1]
+                    sub_run = event_identifiers[-3]  # the order of these is fucked up
+                    field = event_identifiers[-2]  # and this one. -A 2024-11-11 resample
 
                     data_file = path + file
                     
                     data = self.load_data(data_file)  # bjd, flux, flux_err, tshift, ushift
                     
-                    event_name = f'{Field}_{SubRun}_{EventID}'
+                    event_name = f'{field}_{sub_run}_{event_id}'
                     #print('event_name = ', event_name)
 
                     obs0_data = data[0].copy()
                     simt = obs0_data[7]
                     bjd = obs0_data[0]
                     
-                    truths = self.get_params(master_file, EventID, SubRun, Field, simt, bjd)  
+                    truths = self.get_params(master_file, event_id, sub_run, field, simt, bjd)
                     # turns all the degress to radians and sim time to bjd
                     break
 
@@ -218,18 +218,18 @@ class Data:
 
         return data_dict
 
-    def get_params(self, master_file, EventID, SubRun, Field, epoch=None, bjd=None):
+    def get_params(self, master_file, event_id, sub_run, field, epoch=None, bjd=None):
         '''get the true params for the event'''
-        EventID = int(EventID)
-        SubRun = int(SubRun)
-        Field = int(Field)
+        event_id = int(event_id)
+        sub_run = int(sub_run)
+        field = int(field)
 
         master = pd.read_csv(master_file, header=0, delimiter=',')
         #print(master.head())
 
-        truths = master[(master['EventID'] == int(EventID)) & 
-                        (master['SubRun'] == int(SubRun)) & 
-                        (master['Field'] == int(Field))
+        truths = master[(master['EventID'] == int(event_id)) &
+                        (master['SubRun'] == int(sub_run)) &
+                        (master['Field'] == int(field))
                         ].iloc[0]
 
         #print(self.sim_time0)
