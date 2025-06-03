@@ -2,17 +2,7 @@
 
 #import multiprocessing
 #multiprocessing.set_start_method('fork', force=True)
-import warnings
-#warnings.filterwarnings("ignore", message="resource_tracker: There appear to be .* leaked semaphore objects")
-
-import os
-import sys
 import numpy as np
-from astropy import units as u
-from scipy.interpolate import interp1d
-import pandas as pd
-import matplotlib.pyplot as plt
-import time
 
 from Parallax import Parallax
 from Orbit import Orbit

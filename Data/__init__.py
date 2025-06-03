@@ -4,13 +4,6 @@ import numpy as np
 import sys
 import os
 import pandas as pd
-from astropy import units as u
-import astropy.coordinates as astrocoords
-from astropy.coordinates import CartesianRepresentation, CartesianDifferential
-from astropy.time import Time
-from scipy.interpolate import interp1d
-import pickle
-import time
 import warnings
 
 
