@@ -77,11 +77,12 @@ class Orbit:
     
     def get_vel(self, t):
         '''get the velocity of the observatory at time t by interpolating the position file'''
+        t = Time(t, format='jd')
         vx_interp = interp1d(self.epochs.jd, self.velocities.d_x.to(u.au / u.day).value)
         vy_interp = interp1d(self.epochs.jd, self.velocities.d_y.to(u.au / u.day).value)
         vz_interp = interp1d(self.epochs.jd, self.velocities.d_z.to(u.au / u.day).value)
-        vx = vx_interp(t)
-        vy = vy_interp(t)
-        vz = vz_interp(t)
+        vx = vx_interp(t.jd)
+        vy = vy_interp(t.jd)
+        vz = vz_interp(t.jd)
         vxyz = np.vstack((vx, vy, vz)) * (u.au / u.day)
         return vxyz
