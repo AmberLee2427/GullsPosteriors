@@ -47,7 +47,7 @@ def run_emcee(
 
                 steps += stepi
                 count += 1
-                
+
     else:
         # Initialize the sampler with the new arguments
         sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=log_prob_args)
@@ -70,7 +70,7 @@ def run_emcee(
 
             steps += stepi
             count += 1
-    
+
     return sampler
 
 
@@ -84,13 +84,13 @@ def lnprob_transform(self, u, event, true, prange_linear, prange_log, normal=Fal
     for uu in u:
         if not (0.0 <= uu <= 1.0):
             return -np.inf
-            
+
     # Call the new, improved prior_transform with the correct arguments
     theta = self.prior_transform(u, true, prange_linear, prange_log, normal)
-    
+
     # Calculate the log probability (likelihood) with the transformed parameters
     lp = self.lnprob(theta, event)
-        
+
     return lp
 
 
