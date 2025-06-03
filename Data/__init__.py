@@ -1,3 +1,5 @@
+"""Data handling utilities for the microlensing challenge."""
+
 import numpy as np
 import sys
 import os
@@ -13,6 +15,12 @@ import warnings
 
 
 class Data:
+    """Interface for loading light curves and truth parameters.
+
+    The class provides methods to iterate through Data Challenge
+    events and to parse the corresponding light curve files and master
+    CSV tables.
+    """
 
     def __init__(self):
         pass
