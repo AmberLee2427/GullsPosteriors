@@ -182,7 +182,7 @@ class Parallax:
         pass
 
     def rotate_view(self):
-        '''roates from x, y, z, to n, e, d.'''
+        '''rotates from x, y, z to n, e, d.'''
 
         # unit vector pointing to the source
         self.rad = np.array([np.cos(self.ra.rad) * np.cos(self.dec.rad), 
