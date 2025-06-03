@@ -1,0 +1,10 @@
+numpy
+astropy
+matplotlib
+scipy
+pandas
+astroquery
+dynesty
+corner
+emcee
+VBMicrolensing
