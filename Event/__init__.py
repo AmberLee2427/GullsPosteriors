@@ -54,7 +54,24 @@ class Event:
         self.tau = {}
         self.dalpha = {}
 
-    def set_params(self, params): 
+    def set_params(self, params):
+        """Update the event parameters.
+
+        Parameters
+        ----------
+        params : array_like
+            Array of model parameters in the order ``[s, q, rho, u0, alpha,``
+            ``t0, tE, piEN, piEE, i, phase, period]``.  The North and East
+            components of the microlensing parallax are located at indices 7
+            (``piEN``) and 8 (``piEE``).
+
+        Notes
+        -----
+        The parameter array is stored on the instance and the parallax
+        components are forwarded to :meth:`Parallax.update_piE_NE` to keep the
+        parallax object in sync with the current model parameters.
+        """
+
         self.params = params
         piEN = params[7]
         piEE = params[8]
