@@ -1,252 +1,162 @@
+# In Fit/_dynesty.py
 from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
-from dynesty import sampling as dysample
-from dynesty import DynamicNestedSampler
-from dynesty import NestedSampler
+# from dynesty import sampling as dysample # Not used in the functions you provided
+# from dynesty import DynamicNestedSampler # Not used
+# from dynesty import NestedSampler # Not used
 import matplotlib.pyplot as plt
-from scipy.stats import truncnorm
-import time
-import os
-import sys
+from scipy.stats import truncnorm, norm # norm was missing for normal transform
+import time # Not used here but was in original
+import os # Not used here
+import sys # Not used here
 import numpy as np
 
 
-'''
-def prior_transform(self, u, true, prange, normal=False):
-    """Transform unit cube to the parameter space. Nested sampling has firm boundaries on the prior space."""
-        
-    if 'pt' in self.debug:
-        print('debug: Fit.prior_transform: logs, logq, logrho, u0, alpha, t0, tE, piEE, piEN, i, sinphase, logperiod:')
-        print('                            ', u)
+def prior_transform(self, u, true_full, prange_linear, prange_log, normal=False):
+    """
+    Transforms the unit cube to the parameter space.
+    'self' refers to an instance of the Fit class.
+    'true_full' is the full 12-element truths['params'] array.
+    'prange_linear' and 'prange_log' are already correctly sized based on LOM_enabled.
+    'u' is the array of unit hypercube samples, shape (nwalkers, ndim) or (ndim,).
+    """
+    theta = np.zeros_like(u) # Output array, same shape as u
+    
+    # Use the labels stored in the Fit object to determine current parameter set
+    current_labels = self.labels 
+    
+    # Define which parameter names are log-transformed
+    log_param_names_base = ['s', 'q', 'rho']
+    if self.LOM_enabled:
+        log_param_names = log_param_names_base + ['period']
+    else:
+        log_param_names = log_param_names_base
 
-    logs_true = np.log10(true[0])
-    logq_true = np.log10(true[1])
-    logrho_true = np.log10(true[2])
-    u0_true = true[3]
-    alpha_true = true[4]
-    t0_true = true[5]
-    tE_true = true[6]
-    piEE_true = true[7]
-    piEN_true = true[8]
-    i_true = true[9]
-    phase_true = true[10]
-    logperiod_true = np.log10(true[11]*1.0)
-    true_array = np.array([logs_true, logq_true, logrho_true, u0_true, alpha_true, t0_true, tE_true, piEE_true, piEN_true, i_true, phase_true, logperiod_true])
+    # Get indices for log and linear params within the *current* model (9 or 12 params)
+    # These indices refer to positions within `u` and `theta`
+    u_log_indices = [i for i, label in enumerate(current_labels) if label in log_param_names]
+    u_linear_indices = [i for i, label in enumerate(current_labels) if label not in log_param_names]
 
-    if 'pt' in self.debug:
-        print('        log true         ', true_array)
+    # Get indices for log and linear params within the *full 12-param truth array*
+    full_labels_list = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
+    true_log_indices = [full_labels_list.index(name) for name in log_param_names]
+    
+    # For linear params, we need to map current linear labels to their index in the full truth array
+    # First, get the names of the current linear parameters
+    current_linear_labels = [label for label in current_labels if label not in log_param_names]
+    true_linear_indices = [full_labels_list.index(name) for name in current_linear_labels]
 
-    min_array = true_array - prange/2
-    max_array = true_array + prange/2
+    # Slice the 'true_full' array (which is always 12 params)
+    true_log_values = np.asarray(true_full)[true_log_indices]
+    true_linear_values = np.asarray(true_full)[true_linear_indices]
 
-    if normal:
-
-        def normal(u, mu, sig, bounds):
-            """Maps a uniform random variable u (between 0 and 1) to a truncated normal random value x,
-            constrained between bounds[0] and bounds[1], with a mean of mu and standard deviation of sig.
-
-            Parameters:
-            u (float): Uniform random variable between 0 and 1.
-            mu (float): Mean of the normal distribution.
-            sig (float): Standard deviation of the normal distribution.
-            bounds (tuple): Tuple containing the lower and upper bounds (bounds[0], bounds[1]).
-
-            Returns:
-            float: Truncated normal random value x constrained between bounds[0] and bounds[1].
-            """
-
-            # Calculate the lower and upper bounds in terms of the standard normal distribution
-            a, b = (bounds[0] - mu) / sig, (bounds[1] - mu) / sig
-                
-            # Create a truncated normal distribution
-            trunc_normal = truncnorm(a, b, loc=mu, scale=sig)
-                
-            # Map the uniform random variable to the truncated normal distribution
-            if u.ndim == 2:
-                x = np.zeros_like(u)
-                for i in range(u.shape[0]):
-                    x[i] = trunc_normal.ppf(u[i])
+    # --- Transform log parameters ---
+    # prange_log is already correctly sized
+    if u.ndim == 1: # Single sample
+        for i, u_idx in enumerate(u_log_indices):
+            true_val = true_log_values[i]
+            prange_val = prange_log[i]
+            if normal:
+                loc = np.log10(true_val)
+                scale = prange_val / 2.0 
+                theta[u_idx] = 10**norm.ppf(u[u_idx], loc=loc, scale=scale)
             else:
-                x = trunc_normal.ppf(u)
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                theta[u_idx] = 10**(min_log + (max_log - min_log) * u[u_idx])
+    else: # Multiple samples (walkers)
+        for i, u_idx in enumerate(u_log_indices):
+            true_val = true_log_values[i]
+            prange_val = prange_log[i]
+            if normal:
+                loc = np.log10(true_val)
+                scale = prange_val / 2.0
+                theta[:, u_idx] = 10**norm.ppf(u[:, u_idx], loc=loc, scale=scale)
+            else:
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                theta[:, u_idx] = 10**(min_log + (max_log - min_log) * u[:, u_idx])
                 
-            return x
-
-        x = normal(u, true_array, prange/5.0, [min_array, max_array])
-
-        if 'pt' in self.debug:
-            print('            normal           ', x)
-            print('            min              ', min_array)
-            print('            max              ', max_array)
-            print('            true             ', true_array)
-
-
+    # --- Transform linear parameters ---
+    # prange_linear is already correctly sized
+    if u.ndim == 1:
+        for i, u_idx in enumerate(u_linear_indices):
+            true_val = true_linear_values[i]
+            prange_val = prange_linear[i]
+            if normal:
+                loc = true_val
+                scale = prange_val / 2.0
+                theta[u_idx] = norm.ppf(u[u_idx], loc=loc, scale=scale)
+            else:
+                min_linear = true_val - prange_val / 2.0
+                max_linear = true_val + prange_val / 2.0
+                theta[u_idx] = min_linear + (max_linear - min_linear) * u[u_idx]
     else:
-        x = (u-0.5)*prange+true_array
+        for i, u_idx in enumerate(u_linear_indices):
+            true_val = true_linear_values[i]
+            prange_val = prange_linear[i]
+            if normal:
+                loc = true_val
+                scale = prange_val / 2.0
+                theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=loc, scale=scale)
+            else:
+                min_linear = true_val - prange_val / 2.0
+                max_linear = true_val + prange_val / 2.0
+                theta[:, u_idx] = min_linear + (max_linear - min_linear) * u[:, u_idx]
 
-    if u.ndim == 2:
-        logs = x[:,0]
-        logq = x[:,1]
-        logrho = x[:,2]
-        u0 = x[:,3]
-        alpha = x[:,4]
-        t0 = x[:,5]
-        tE = x[:,6]
-        piEE = x[:,7]
-        piEN = x[:,8]
-        i = x[:,9]
-        phase = x[:,10]
-        logperiod = x[:,11]
-    else:
-        logs, logq, logrho, u0, alpha, t0, tE, piEE, piEN, i, phase, logperiod = x
+    # Angle wrapping based on current labels
+    param_to_theta_idx = {label: i for i, label in enumerate(current_labels)}
 
-    s = 10.0**logs  # log uniform samples
-    q = 10.0**logq
-    rho = 10.0**logrho
-    #print('debug: Fit.prior_transform: phase: ', phase)
-    period = 10.0**logperiod
-
-    if 'pt' in self.debug:
-        print('debug Fit.prior_transform: s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period: ')
-        print('                  ', s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period)
-        print('       truths:    ', true)
-    else:
-        print('~', end='')
+    if 'alpha' in param_to_theta_idx:
+        alpha_idx = param_to_theta_idx['alpha']
+        if u.ndim == 1: theta[alpha_idx] %= (2 * np.pi)
+        else: theta[:, alpha_idx] %= (2 * np.pi)
         
-    if u.ndim == 2:
-        x[:,2] = rho
-        x[:,0] = s
-        x[:,1] = q
-        x[:,11] = period
-    else:
-        x[2] = rho
-        x[0] = s
-        x[1] = q
-        x[11] = period
-
-    return x #'''
-
-# In Fit/_dynesty.py
-import numpy as np # Make sure numpy is imported in this file
-
-def prior_transform(self, u, true, prange_linear, prange_log, normal=False):
-    """
-    Transform unit cube to the parameter space.
-    Handles linear and log-space parameters separately.
-    """
-    # THE FIX: Ensure the 'true' parameter is a NumPy array for fancy indexing
-    true = np.asarray(true)
-
-    # Define which parameter indices are linear vs. log
-    # s, q, rho, period are log
-    log_indices = [0, 1, 2, 11]
-    # u0, alpha, t0, tE, piEE, piEN, i, phase are linear
-    linear_indices = [3, 4, 5, 6, 7, 8, 9, 10]
-
-    # --- Handle linear parameters ---
-    true_linear = true[linear_indices]
-    min_linear = true_linear - prange_linear / 2.0
-    max_linear = true_linear + prange_linear / 2.0
-    sig_linear = prange_linear / 5.0 # Or whatever factor you deem appropriate
-
-    # --- Handle log parameters ---
-    # Convert true values to log10 space
-    true_log = np.log10(true[log_indices])
-    min_log = true_log - prange_log / 2.0
-    max_log = true_log + prange_log / 2.0
-    sig_log = prange_log / 5.0 # Or whatever factor you deem appropriate
-
-    # The full 'mu' and 'sigma' vectors for the truncated normal
-    true_array = np.zeros(len(true))
-    true_array[linear_indices] = true_linear
-    true_array[log_indices] = true_log
-
-    sig_array = np.zeros(len(true))
-    sig_array[linear_indices] = sig_linear
-    sig_array[log_indices] = sig_log
-
-    min_array = np.zeros(len(true))
-    min_array[linear_indices] = min_linear
-    min_array[log_indices] = min_log
-
-    max_array = np.zeros(len(true))
-    max_array[linear_indices] = max_linear
-    max_array[log_indices] = max_log
-
-    if normal:
-        # Calculate the bounds in terms of the standard normal distribution
-        a, b = (min_array - true_array) / sig_array, (max_array - true_array) / sig_array
-
-        # Create the truncated normal distribution
-        trunc_normal = truncnorm(a, b, loc=true_array, scale=sig_array)
-
-        # Map the uniform random variable to the truncated normal distribution
-        if u.ndim == 2:
-            x = np.zeros_like(u)
-            for i in range(u.shape[0]):
-                x[i] = trunc_normal.ppf(u[i])
-        else:
-            x = trunc_normal.ppf(u)
-    else:
-        # Simple uniform transformation
-        full_prange = max_array - min_array
-        x = (u - 0.5) * full_prange + true_array
-
-    # Now, create the final physical parameter array
-    final_params = np.zeros_like(x)
-    if u.ndim == 2:
-        # Get the linear-space values
-        final_params[:, linear_indices] = x[:, linear_indices]
-        # Convert log-space values back to linear and place them
-        final_params[:, log_indices] = 10.0**x[:, log_indices]
-    else:
-        final_params[linear_indices] = x[linear_indices]
-        final_params[log_indices] = 10.0**x[log_indices]
-
-    return final_params
+    if self.LOM_enabled:
+        if 'i' in param_to_theta_idx: # Inclination
+            i_idx = param_to_theta_idx['i']
+            # Decide if 'i' should be 0-pi or 0-2pi. Typically 0-pi.
+            # If 0-pi, use something like: val = val % (2*np.pi); if val > np.pi: val -= np.pi
+            if u.ndim == 1: theta[i_idx] %= (2 * np.pi) 
+            else: theta[:, i_idx] %= (2 * np.pi)
+        if 'phase' in param_to_theta_idx:
+            phase_idx = param_to_theta_idx['phase']
+            if u.ndim == 1: theta[phase_idx] %= (2 * np.pi)
+            else: theta[:, phase_idx] %= (2 * np.pi)
+            
+    return theta
  
+
 def runplot(self, res, event_name, path):
+    # This function seems okay as dyplot.runplot doesn't require explicit labels or truths
+    # if they are already in the 'res' object from dynesty.
     if 'run' in self.debug:
         print('debug Fit.runplot: event_name: ', event_name)
-        print('debug Fit.runplot: path: ', path)
-
     fig, _ = dyplot.runplot(res)
-
-    if 'run' in self.debug:
-        print('debug Fit.runplot: dyplot.runplot fig: built')
-
     plt.title(event_name)
-
     fig.savefig(path+'posteriors/'+event_name+'_runplot.png')
-
-    if 'run' in self.debug:
-        print('debug Fit.runplot: save path: ', path+'posteriors/'+event_name+'_runplot.png')    
-
     plt.close(fig)
 
 def traceplot(self, res, event_name, path, truths):
     if 'trace' in self.debug:
         print('debug Fit.traceplot: event_name: ', event_name)
-        print('debug Fit.traceplot: path: ', path)
-        print('debug Fit.traceplot: truths: ', truths)
 
-    labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
+    # Use labels and ndim stored in the Fit object (self)
+    current_labels = self.labels 
+    # Slice truths according to the current number of dimensions
+    current_truths = truths['params'][:self.ndim]
+
     fig, _ = dyplot.traceplot(res, 
-                              truths=np.array(truths['params']),
+                              truths=np.array(current_truths),
                               truth_color='black', 
                               show_titles=True,
                               trace_cmap='viridis', 
                               connect=True,
-                              connect_highlight=range(5), 
-                              labels=labels)
+                              connect_highlight=range(min(5, self.ndim)), # Highlight fewer if fewer params 
+                              labels=current_labels) # Use dynamic labels
         
     if 'trace' in self.debug:
-        print('debug Fit.traceplot: dyplot.traceplot fig: built')
-
-    plt.title(event_name)
-
+        print('debug Fit.traceplot fig: built')
+    plt.suptitle(event_name) # Use suptitle for overall plot title with traceplot
     fig.savefig(path+'posteriors/'+event_name+'_traceplot.png')
-
-    if 'trace' in self.debug:
-        print('debug Fit.traceplot: save path: ', path+'posteriors/'+event_name+'_traceplot.png')
-
     plt.close(fig)

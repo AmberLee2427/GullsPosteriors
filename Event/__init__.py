@@ -20,7 +20,7 @@ class Event:
 
     from ._VBM import magnification
 
-    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict, t_start: float, t_ref: float, eps=1e-4, gamma=0.36):
+    def __init__(self, parallax: Parallax, orbit: Orbit, data: dict, truths: dict, t_start: float, t_ref: float, eps=1e-4, gamma=0.36, LOM_enabled=True):
         self.orbit = orbit
         self.parallax = parallax
         self.parallax.set_ref_frame(t_ref)
@@ -37,6 +37,8 @@ class Event:
         self.gamma = gamma
         self.mag_obj = None
 
+
+        self.LOM_enabled = LOM_enabled # NEW: store the flag
         self.traj_base_tau = {}
         self.traj_parallax_tau = {}
         self.traj_base_beta = {}
@@ -228,9 +230,6 @@ class Event:
             p = pp.copy()
 
         q = p[1]  # mass ratio - not dependent on reference frame
-        i = p[9]  # inclination of the orbit
-        phase0 = p[10]  # phase at time tcroin
-        period = p[11]  # planet orbital period
         t0 = p[5]  # time of event peak in BJD
         #t_start = self.sim_time0  # I shouldn't need this
         tE = p[6]  # Einstein crossing time/event timescale
@@ -241,64 +240,100 @@ class Event:
         alpha = p[4]  # angle of the source trajectory
         s = p[0]  # angular lens seperation at time t0
 
-        # Semimajor axis in units of thetaE
-        s_ref, _, _ = self.projected_seperation(i, period, 0.0, phase_offset=phase0, t_start=0.0) 
-        a = s/(s_ref)  # angular semimajor axis in uits of thetaE
-        #print('debug Event.get_magnification: a/rE:', 
-        #      self.truths['Planet_semimajoraxis']/self.truths['rE'], a)
-
-        # COM frame
-        a1 = q/(1.0+q) * a
-        a2 = a - a1
-        s1 = q/(1.0+q) * s  # L1 to CoM offset
-        s2 = s_ref - s1
-        self.lens1_0 = np.array([-s1, 0.0])  # lens 1 position at time tref
-        self.lens2_0 = np.array([s2, 0.0])  # lens 2 position at time tref
-
-        # Notes:
-        # m1a1 = m2a2  (a is 'distance' from COM) 
-        # a1 + a2 = a
-        # m1/m2 = q     (q<1, and m2<m1)
-        # a2 = a1/q
-        # a = a1 + a1/q = a1(1+1/q) = a1(q+1)/q
-        # a1 = aq/(1+q)
-
         tau = (t - t0) / tE  # event time in units of tE (tt) relative to t0
                              # where t0 is the time of closest approach to L1
 
-        # Orbital motion - dsdt - COM frame
-        #print('debug Event.get_magnification: i: ', i)
-        #print('debug Event.get_magnification: period: ', period)
-        #print('debug Event.get_magnification: period(tau): ', period/tE)
-        #print('debug Event.get_magnification: tau: ', tau)
-        #print('debug Event.get_magnification: phase0: ', phase0)
-        #print('debug Event.get_magnification: phase0 - 180: ', phase0+np.pi)
-        #print('debug Event.get_magnification: a1: ', a1)
-        #print('debug Event.get_magnification: a2: ', a2)
+        # --- NEW: Conditional LOM physics ---
+        if self.LOM_enabled:
+            # Orbital parameters are unpacked only if needed
+            i = p[9]  # inclination of the orbit
+            phase0 = p[10]  # phase at time tcroin
+            period = p[11]  # planet orbital period
 
-        # phase is always defined at the fixed time t_ref 
-        # this coordinate system is defined at time t_ref with a COM origin
-        # let ss be the array of angular lens seperations at each epoch
-        # ss does not have a reference frame
-        ss1, x1, y1 = self.projected_seperation(i, period, t, 
-                                                phase_offset=phase0+np.pi,
-                                                a=a1,
-                                                t_start=t_ref
-                                                )  # star - L1
-        ss2, x2, y2 = self.projected_seperation(i, period, t, 
-                                                phase_offset=phase0, 
-                                                a=a2, 
-                                                t_start=t_ref
-                                                )  # planet - L2
-        ss = np.sqrt((x2 - x1)**2+(y2 - y1)**2)  # i don't know that this is strictly necessary since they are always opposite
-        self.ss[obs] = ss  # saving these for bug testing
-        self.tau[obs] = tau
-        #print('\ndebug Event.get_magnification: s: \n', 
-        #      ss, ss.shape, '\n', 
-        #      ss1+ss2, (ss1+ss2).shape
-        #      )  # these should be equal, I think
+
+            # Semimajor axis in units of thetaE
+            s_ref, _, _ = self.projected_seperation(i, period, 0.0, phase_offset=phase0, t_start=0.0) 
+            a = s/(s_ref)  # angular semimajor axis in uits of thetaE
+            #print('debug Event.get_magnification: a/rE:', 
+            #      self.truths['Planet_semimajoraxis']/self.truths['rE'], a)
+
+            # COM frame
+            a1 = q/(1.0+q) * a
+            a2 = a - a1
+
+            s1 = q/(1.0+q) * s  # L1 to CoM offset
+            s2 = s_ref - s1
+            self.lens1_0 = np.array([-s1, 0.0])  # lens 1 position at time tref
+            self.lens2_0 = np.array([s2, 0.0])  # lens 2 position at time tref
+
+            # Notes:
+            # m1a1 = m2a2  (a is 'distance' from COM) 
+            # a1 + a2 = a
+            # m1/m2 = q     (q<1, and m2<m1)
+            # a2 = a1/q
+            # a = a1 + a1/q = a1(1+1/q) = a1(q+1)/q
+            # a1 = aq/(1+q)
+
+            # Orbital motion - dsdt - COM frame
+            #print('debug Event.get_magnification: i: ', i)
+            #print('debug Event.get_magnification: period: ', period)
+            #print('debug Event.get_magnification: period(tau): ', period/tE)
+            #print('debug Event.get_magnification: tau: ', tau)
+            #print('debug Event.get_magnification: phase0: ', phase0)
+            #print('debug Event.get_magnification: phase0 - 180: ', phase0+np.pi)
+            #print('debug Event.get_magnification: a1: ', a1)
+            #print('debug Event.get_magnification: a2: ', a2)
+
+            # phase is always defined at the fixed time t_ref 
+            # this coordinate system is defined at time t_ref with a COM origin
+            # let ss be the array of angular lens seperations at each epoch
+            # ss does not have a reference frame
+            ss1, x1, y1 = self.projected_seperation(i, period, t, 
+                                                    phase_offset=phase0+np.pi,
+                                                    a=a1,
+                                                    t_start=t_ref
+                                                    )  # star - L1
+            ss2, x2, y2 = self.projected_seperation(i, period, t, 
+                                                    phase_offset=phase0, 
+                                                    a=a2, 
+                                                    t_start=t_ref
+                                                    )  # planet - L2
+            ss = np.sqrt((x2 - x1)**2+(y2 - y1)**2)  # i don't know that this is strictly necessary since they are always opposite
+            self.ss[obs] = ss  # saving these for bug testing
+            #print('\ndebug Event.get_magnification: s: \n', 
+            #      ss, ss.shape, '\n', 
+            #      ss1+ss2, (ss1+ss2).shape
+            #      )  # these should be equal, I think
+
+            # Orbital motion - dalphadt
+            rot = np.arctan2(y2, x2)  # positions of the planet in the COM-origin, planet-rotation frame
+                                    # what is the reference time for this? - currently tref
+            _, x0, y0 = self.projected_seperation(i, period, 0.0, t_start=0.0, phase_offset=phase0, a=a)
+            rot0 = np.arctan2(y0, x0)  # at reference time
+            # the x, y positions are nonsense wihtout a/a1/a2, but their ratios are valid for the rotation either way
+            self.dalpha[obs] = rot - rot0  # saving for debugging
+            #print('debug Event.get_magnification: rot: ', rot)
+            #print('debug Event.get_magnification: rot0: ', rot0)
+            #print('debug Event.get_magnification: dalpha: ', self.dalpha[obs])
+        
+        else:
+            # If LOM is disabled, separation is constant and there is no rotation
+            ss = np.ones_like(t) * s  # Separation is just 's'
+            self.ss[obs] = ss
+            self.dalpha[obs] = np.zeros_like(t) # No orbital rotation
+            
+            # --- ADD THESE LINES ---
+            # Define static lens positions for plotting
+            s1 = q/(1.0+q) * s
+            s2 = s - s1
+            self.lens1_0 = np.array([-s1, 0.0])
+            self.lens2_0 = np.array([s2, 0.0])
+
+
+        # --- End of conditional LOM physics ---
 
         #umin = min(umin, np.sqrt(tt**2, uu**2))  # gulls uses this value for weights stuff
+        self.tau[obs] = tau
 
         # 'source' trajectory with parallax
         piEE = p[7]
@@ -341,16 +376,7 @@ class Event:
         self.traj_parallax_u2[obs] = ysin  # saving for debugging
         self.traj_base_u2[obs] = tau * sinalpha + beta * cosalpha # sans parallax, for debug
 
-        # Orbital motion - dalphadt
-        rot = np.arctan2(y2, x2)  # positions of the planet in the COM-origin, planet-rotation frame
-                                  # what is the reference time for this? - currently tref
-        _, x0, y0 = self.projected_seperation(i, period, 0.0, t_start=0.0, phase_offset=phase0, a=a)
-        rot0 = np.arctan2(y0, x0)  # at reference time
-        # the x, y positions are nonsense wihtout a/a1/a2, but their ratios are valid for the rotation either way
-        self.dalpha[obs] = rot - rot0  # saving for debugging
-        #print('debug Event.get_magnification: rot: ', rot)
-        #print('debug Event.get_magnification: rot0: ', rot0)
-        #print('debug Event.get_magnification: dalpha: ', self.dalpha[obs])
+
         cosrot = np.cos(-self.dalpha[obs])  # gulls has -dalpha
         sinrot = np.sin(-self.dalpha[obs])
 
