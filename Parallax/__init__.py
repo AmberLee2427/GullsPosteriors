@@ -5,17 +5,53 @@ from astropy import units as u
 from astropy import coordinates as astrocoords
 
 
-class Parallax:
 
-    def __init__(self, 
-                 ra, 
-                 dec, 
-                 orbit, 
-                 t_ref, 
-                 tu=None, 
-                 piE=None, 
-                 epochs=None
-                 ):
+class Parallax:
+    """Handle observatory parallax calculations.
+
+    The class rotates observatory ephemerides into the reference frame aligned
+    with a microlensing event and converts positional offsets from the time--
+    impact parameter (``tau``, ``u``) system into north/east coordinates.  It
+    also provides utilities for converting those coordinates back into the
+    observatory frame.
+    """
+
+    def __init__(
+        self,
+        ra,
+        dec,
+        orbit,
+        t_ref,
+        tu=None,
+        piE=None,
+        epochs=None,
+    ):
+        """Create a parallax helper.
+
+        Parameters
+        ----------
+        ra, dec : float
+            Right ascension and declination of the event in degrees.
+        orbit : :class:`Orbit`
+            Observatory ephemeris describing the position and velocity as a
+            function of time.
+        t_ref : float
+            Reference time in Julian days used to define the zero point of the
+            parallax shift.
+        tu : array_like, optional
+            Precomputed parallax shift in the ``(\tau, u)`` frame.  If given it
+            should be indexed by observatory name.
+        piE : array_like, optional
+            Microlensing parallax vector ``(\pi_{EN}, \pi_{EE})`` associated with
+            ``tu``.
+        epochs : dict, optional
+            Dictionary mapping observatory names to the epochs of ``tu``.
+
+        Notes
+        -----
+        When ``tu`` is supplied the shift is immediately converted to north and
+        east components via :meth:`tu2ne` and stored on the instance.
+        """
         self.ra = ra * u.deg
         self.dec = dec * u.deg
         self.event_coords = astrocoords.SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
@@ -51,10 +87,17 @@ class Parallax:
         self.vref = self.orbit.get_vel(t_ref)
 
     def update_piE_NE(self, piEN, piEE):
-        '''update the parallax parameters'''
+        """Set the microlensing parallax components.
+
+        Parameters
+        ----------
+        piEN, piEE : float
+            North and east components of the microlensing parallax vector.
+        """
+
         self.piEN = piEN
         self.piEE = piEE
-        
+
         self.piE = np.array([piEN, piEE])
 
     def dperp():
@@ -62,7 +105,12 @@ class Parallax:
         pass
 
     def rotate_view(self):
-        '''rotates from x, y, z to n, e, d.'''
+        """Rotate observatory vectors into the event frame.
+
+        The transformation aligns the ``z`` axis with the line of sight to the
+        event such that the resulting coordinates correspond to north, east and
+        the line-of-sight (``n``, ``e``, ``d``).
+        """
 
         # unit vector pointing to the source
         self.rad = np.array([np.cos(self.ra.to(u.rad).value) * np.cos(self.dec.to(u.rad).value), 
@@ -92,7 +140,24 @@ class Parallax:
         return np.array([v[:,0]*cosp - v[:,1]*sinp, v[:,0]*sinp + v[:,1]*cosp])
 
     def tu2ne(self, tu, piE):
-        '''convert the parallax shift in t, u to n, e'''
+        """Convert ``(tau, u)`` shifts to north/east coordinates.
+
+        Parameters
+        ----------
+        tu : array_like
+            Shift in the ``(\tau, u)`` system as returned by
+            :meth:`parallax_shift`.
+        piE : array_like
+            Microlensing parallax vector ``(\pi_{EN}, \pi_{EE})`` used to rotate
+            the shift into the event frame.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of ``(n, e)`` offsets with the same leading dimension as
+            ``tu``.
+        """
+
         piEN = piE[0]
         piEE = piE[1]
         phi_pi = np.arctan2(piEE, piEN)
@@ -104,7 +169,20 @@ class Parallax:
         return ne
 
     def get_pos(self, t):
-        '''get the position of the observatory at time t in the n, e, d frame'''
+        """Return the observatory position in the event frame.
+
+        Parameters
+        ----------
+        t : float or array_like
+            Times at which to evaluate the position expressed in Julian days.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(3, N)`` array of ``(n, e, d)`` coordinates in astronomical
+            units.
+        """
+
         xyz = self.orbit.get_pos(t)
         ned = np.dot(self.rot_matrix, xyz)
         return ned
