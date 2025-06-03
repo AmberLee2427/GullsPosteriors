@@ -13,12 +13,26 @@ import numpy as np
 
 
 def prior_transform(self, u, true_full, prange_linear, prange_log, normal=False):
-    """
-    Transforms the unit cube to the parameter space.
-    'self' refers to an instance of the Fit class.
-    'true_full' is the full 12-element truths['params'] array.
-    'prange_linear' and 'prange_log' are already correctly sized based on LOM_enabled.
-    'u' is the array of unit hypercube samples, shape (nwalkers, ndim) or (ndim,).
+    """Map unit-cube samples to physical parameters.
+
+    Parameters
+    ----------
+    u : array_like
+        Samples from the unit hypercube with shape ``(nwalkers, ndim)`` or
+        ``(ndim,)``.
+    true_full : array_like
+        Reference parameter values for the complete 12-parameter model.
+    prange_linear : array_like
+        Linear prior widths for the current model parameters.
+    prange_log : array_like
+        Logarithmic prior widths for the current model parameters.
+    normal : bool, optional
+        If ``True``, draw from normal rather than uniform distributions.
+
+    Returns
+    -------
+    ndarray
+        Array of transformed parameters with the same shape as ``u``.
     """
     theta = np.zeros_like(u) # Output array, same shape as u
     
