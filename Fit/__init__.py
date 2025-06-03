@@ -150,8 +150,21 @@ class Fit:
 
         return chi2, chi2sum
 
-    def lnlike(self, theta, event):  
-        # ... (this function is fine) ...
+    def lnlike(self, theta, event):
+        """Compute the log-likelihood for ``theta``.
+
+        Parameters
+        ----------
+        theta : array_like
+            Parameter vector to evaluate.
+        event : Event
+            Microlensing event containing data and model information.
+
+        Returns
+        -------
+        float
+            The log-likelihood value.
+        """
         _, chi2 = self.get_chi2(event, theta)
 
         if 'lnlike' in self.debug:
@@ -162,6 +175,20 @@ class Fit:
 
     # MODIFIED: lnprior to use self.LOM_enabled
     def lnprior(self, theta, bound_penalty=False):
+        """Evaluate the log-prior probability.
+
+        Parameters
+        ----------
+        theta : array_like
+            Parameter vector to evaluate.
+        bound_penalty : bool, optional
+            Maintained for backward compatibility and currently unused.
+
+        Returns
+        -------
+        float
+            Log-prior probability or ``-np.inf`` if outside bounds.
+        """
 
         if self.LOM_enabled:
             s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
@@ -184,12 +211,26 @@ class Fit:
 
     # MODIFIED: lnprob to use self.LOM_enabled
     def lnprob(self, theta, event):
+        """Calculate the log-posterior probability.
+
+        Parameters
+        ----------
+        theta : array_like
+            Parameter vector to evaluate.
+        event : Event
+            Microlensing event providing data and magnification model.
+
+        Returns
+        -------
+        float
+            Sum of log-prior and log-likelihood values.
+        """
         if self.LOM_enabled:
             theta[4] %= (2 * np.pi)  # alpha
             theta[10] %= (2 * np.pi) # phase
             # For inclination 'i', it's usually 0 to pi. If it's 0 to 2pi in your setup, this is fine.
             # Otherwise, you might need theta[9] = np.abs(theta[9] % np.pi) or similar.
-            theta[9] %= (2 * np.pi)  # i 
+            theta[9] %= (2 * np.pi)  # i
 
         else:
             theta[4] %= (2*np.pi)  # alpha
