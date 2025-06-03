@@ -326,7 +326,7 @@ if __name__ == '__main__':
         print('\nTesting the fit functions')
         print('--------------------------------')
 
-        fit.debug = ['ln_like', 'ln_prior', 'pt']
+        fit.debug = ['ln_like', 'lnprior', 'pt']
 
         print(type(event_tc), type(event_tc.truths['params']))
 

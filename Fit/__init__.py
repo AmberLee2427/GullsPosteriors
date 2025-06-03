@@ -130,7 +130,7 @@ class Fit:
     def lnprior(self, theta, bound_penalty=False):
         s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
 
-        if 'ln_prior' in self.debug:
+        if 'lnprior' in self.debug:
             print('debug Fit.lnprior: s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period: ')
             print('                   ', theta)
 
