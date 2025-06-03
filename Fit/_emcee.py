@@ -13,7 +13,10 @@ import multiprocessing as mp
 mp.set_start_method('fork', force=True)
 
 
-def run_emcee(self, nl, ndim, stepi, mi, log_prob_function, state, event_obj, truths, prange_linear, prange_log, normal, threads=1, event_name='', path='./', labels=None):
+def run_emcee(
+        self, nl, ndim, stepi, mi, log_prob_function, state,
+        event_obj, truths, prange_linear, prange_log, normal,
+        threads=1, event_name='', path='./', labels=None):
     """
     Edited run_emcee function.
     'bounds' has been replaced by 'prange_linear' and 'prange_log'.
