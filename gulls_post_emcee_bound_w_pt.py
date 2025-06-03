@@ -438,7 +438,7 @@ if __name__ == '__main__':
             if LOM_enabled:
                 # Caustic Plot
                 plt.figure()
-                s_tc, _, _ = event_tc.projected_seperation(
+                s_tc, _, _ = event_tc.projected_separation(
                     truths['params'][9],
                     truths['params'][11],
                     truths['tcroin'],
