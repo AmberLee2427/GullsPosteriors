@@ -7,15 +7,47 @@ from astropy import coordinates as astrocoords
 
 class Parallax:
 
-    def __init__(self, 
-                 ra, 
-                 dec, 
-                 orbit, 
-                 t_ref, 
-                 tu=None, 
-                 piE=None, 
+    def __init__(self,
+                 ra,
+                 dec,
+                 orbit,
+                 t_ref,
+                 tu=None,
+                 piE=None,
                  epochs=None
                  ):
+        """Create a parallax utility object.
+
+        Parameters
+        ----------
+        ra, dec : float
+            Event right ascension and declination in degrees.
+        orbit : Orbit
+            Observatory ephemerides.
+        t_ref : float
+            Reference epoch in BJD.
+        tu : array_like, optional
+            Precomputed parallax shift in ``(\tau, u)`` coordinates.
+        piE : array_like, optional
+            Parallax vector associated with ``tu``.
+        epochs : dict, optional
+            Epochs corresponding to ``tu`` for each observatory.
+
+        Attributes
+        ----------
+        ra, dec : :class:`astropy.units.Quantity`
+            Stored celestial coordinates of the event.
+        orbit : Orbit
+            Ephemeris object used for conversions.
+        tref : float
+            Reference time used for shifts.
+        xref, vref : `numpy.ndarray`
+            Observatory position and velocity at ``t_ref``.
+        tu, ne : dict or None
+            Pre-computed parallax shifts in ``(\tau, u)`` and north/east
+            coordinates when supplied.
+        """
+
         self.ra = ra * u.deg
         self.dec = dec * u.deg
         self.event_coords = astrocoords.SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')

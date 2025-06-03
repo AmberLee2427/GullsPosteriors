@@ -8,15 +8,51 @@ from scipy.interpolate import interp1d
 
 class Orbit:
 
-    def __init__(self, 
-                 obs_location='SEMB-L2', 
+    def __init__(self,
+                 obs_location='SEMB-L2',
                  start_date='2018-04-25',
-                 end_date='2023-05-30', 
-                 refplane='ecliptic', 
+                 end_date='2023-05-30',
+                 refplane='ecliptic',
                  n_epochs=None,
                  origin='500@10',
                  date_format='iso'):
-        '''Position file from JPL Horizons'''
+        """Query JPL Horizons for the observatory ephemeris.
+
+        Parameters
+        ----------
+        obs_location : str, optional
+            Horizons identifier of the observatory.
+        start_date, end_date : str, optional
+            Date range to query in the format specified by ``date_format``.
+        refplane : str, optional
+            Reference plane of the returned coordinates.
+        n_epochs : int or None, optional
+            Number of epochs to sample.  Daily cadence is used when ``None``.
+        origin : str, optional
+            Horizons origin code.
+        date_format : str, optional
+            String format for the dates as understood by
+            :class:`~astropy.time.Time`.
+
+        Attributes
+        ----------
+        start_time, end_time : :class:`~astropy.time.Time`
+            Parsed start and end dates.
+        n_epochs : int
+            Number of epochs returned from Horizons.
+        obs_location : str
+            Identifier used in the Horizons query.
+        origin : str
+            Horizons origin code.
+        refplane : str
+            Reference plane of the coordinates.
+        epochs : :class:`~astropy.time.Time`
+            Times of each ephemeris entry.
+        positions : :class:`~astropy.coordinates.CartesianRepresentation`
+            Observatory positions in AU.
+        velocities : :class:`~astropy.coordinates.CartesianDifferential`
+            Observatory velocities in AU/day.
+        """
 
         self.start_time = Time(start_date, format=date_format)
         self.end_time = Time(end_date, format=date_format)
