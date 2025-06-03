@@ -335,17 +335,27 @@ if __name__ == '__main__':
             colours, data_labels = ['orange', 'red', 'green'], ['W146', 'Z087', 'K213']
             ns = 20
             
-            p0 = truths['params'][:ndim]
-            event_fit.set_params(p0)
+            p0 = truths['params'][:ndim] # This should use samples_phys or a representation of the best fit from samples
+                                        # For now, using truths as a placeholder for p0 as in your script.
+            event_fit.set_params(p0) # Sets the event_fit to use these parameters for A0_fit calculation
             
             fs_ref, fb_ref = {}, {}
             for obs in event_fit.data.keys():
-                t_obs, f_obs, ferr_obs = event_fit.data[obs]
+                # OLD PROBLEMATIC LINE:
+                # t_obs, f_obs, ferr_obs = event_fit.data[obs] 
+                
+                # CORRECTED UNPACKING:
+                current_data_array = event_fit.data[obs]
+                t_obs = current_data_array[0,:]
+                f_obs = current_data_array[1,:]
+                ferr_obs = current_data_array[2,:]
+                # END CORRECTION
+
                 A_ref = event_fit.get_magnification(t_obs, obs)
                 fs_ref[obs], fb_ref[obs] = fit_obj.get_fluxes(A_ref, f_obs, ferr_obs**2)
 
             tt = np.linspace(np.min(event_fit.data[0][0]), np.max(event_fit.data[0][0]), 2000)
-            A0_fit = event_fit.get_magnification(tt, obs=0)
+            A0_fit = event_fit.get_magnification(tt, obs=0) # Calculates model with p0
             ax1.plot(tt, A0_fit, '--', color='r', alpha=0.7, zorder=5, label='Truth Model')
             
             chain_index = np.random.randint(0, len(samples_phys), ns)
