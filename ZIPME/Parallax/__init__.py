@@ -72,7 +72,7 @@ class Parallax:
         # north vector in x, y, z
         north = np.array([0, 0, 1])
         
-        # unit vector ointing east in the lens plane
+        # unit vector pointing east in the lens plane
         e_unit = np.cross(north, self.rad)/np.linalg.norm(np.cross(north, self.rad))
 
         # unit vector pointing north in the lens plane
