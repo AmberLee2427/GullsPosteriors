@@ -30,19 +30,24 @@ class Fit:
             sys.exit()
 
     def get_fluxes(self, model:np.ndarray, f:np.ndarray, sig2:np.ndarray):
-        '''Solves for the flux parameters for a given model using least squares.
-        
-        Parameters:
-        -----------
-        model: model magnification curve
-        f: observed flux values
-        sig2: flux errors.
-        
-        Returns:
-        --------
-        FS: source flux
-        FB: blend flux.
-        '''
+        """Solve for the source and blend fluxes.
+
+        Parameters
+        ----------
+        model : numpy.ndarray
+            Model magnification curve.
+        f : numpy.ndarray
+            Observed flux measurements.
+        sig2 : numpy.ndarray
+            Variance of the observed fluxes.
+
+        Returns
+        -------
+        FS : float
+            Best-fit source flux.
+        FB : float
+            Best-fit blend flux.
+        """
         #A
         A11 = np.sum(model**2 / sig2)
         Adiag = np.sum(model / sig2) 
