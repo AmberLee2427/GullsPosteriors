@@ -34,7 +34,7 @@ Plots and posterior samples are saved in the working directory.
 ## Learning more
 
 - Examine `Data.new_event` and `Data.load_data` to understand the light‑curve format.
-- `Event.projected_seperation` describes the source–lens geometry.
+ - `Event.projected_separation` describes the source–lens geometry.
 - `Fit` exposes `run_emcee` and `prior_transform` for controlling MCMC or nested sampling.
 - The included notebooks showcase references and diagnostic plots.
 

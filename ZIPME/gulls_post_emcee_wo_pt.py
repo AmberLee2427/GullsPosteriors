@@ -290,9 +290,9 @@ if __name__ == '__main__':
 
         print('s, q', s, q)
 
-        s_t0, _, _ = event_tc.projected_seperation(i, period, t0, phase_offset=phase0, t_start=t0, a = a)
-        s_tc, _, _ = event_tc.projected_seperation(i, period, tc, phase_offset=phase0, t_start=t0, a = a)
-        s_tref, _, _ = event_tc.projected_seperation(i, period, tc_calc, phase_offset=phase0, t_start=t0, a = a)
+        s_t0, _, _ = event_tc.projected_separation(i, period, t0, phase_offset=phase0, t_start=t0, a = a)
+        s_tc, _, _ = event_tc.projected_separation(i, period, tc, phase_offset=phase0, t_start=t0, a = a)
+        s_tref, _, _ = event_tc.projected_separation(i, period, tc_calc, phase_offset=phase0, t_start=t0, a = a)
         print(s_tc, s_t0, s_tref)
         
         t = event_tc.data[0][0]  # BJD
