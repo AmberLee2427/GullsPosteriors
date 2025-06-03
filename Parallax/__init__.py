@@ -110,26 +110,41 @@ class Parallax:
         return ned
 
     def parallax_shift(self, t, obs=None):
-        r'''calculate the parallax shift.
+        r"""Calculate the parallax shift.
+
+        Parameters
+        ----------
+        t : :class:`numpy.ndarray` or dict
+            Times at which to evaluate the shift.  If ``t`` is a dictionary it
+            should map observatory names to arrays of times.
+        obs : str, optional
+            Specific observatory key when ``t`` is a single array.
+
+        Returns
+        -------
+        dict or :class:`numpy.ndarray`
+            Parallax shift ``(dtau, dbeta)`` for each observatory or a single
+            array when only one observatory is requested.
 
         Notes
         -----
         Gould, A., 2004, ApJ, 606, 319
 
-        Let s(t) be the Earth-to-Sun vector in units of AU in the heliocentric frame. 
-        Let tp be some fixed time, in practice a time very close to the time t0 of 
-        the peak of the event as seen from the Earth, and evaluate the derivative of 
-        s(t) at this time,
+        Let :math:`s(t)` be the Earth--Sun vector in units of AU in the
+        heliocentric frame and evaluate
 
-        ..math::
-        \Delta s(t) = s(t) - s(t_ref) = (t-t_ref) v_ref$$
+        .. math::
+           \Delta s(t) = s(t) - s(t_{ref}) = (t - t_{ref})\,v_{ref}
 
-        observations are toward an event at some given celestial coordinates 
-        and define nˆ and eˆ as the unit vectors pointing north and east.
+        Observations are toward an event at some given celestial coordinates.
+        Define :math:`\hat{n}` and :math:`\hat{e}` as the unit vectors pointing
+        north and east such that
 
-        ..math::
-        (dtau, dbeta) = (s_n(t)\pi_{EN} + s_e(t)\pi_{EE}, -s_n(t)\pi_{EE} + s_e(t)\pi_{EN})$$
-        '''
+        .. math::
+           (\Delta \tau, \Delta \beta) =
+           (s_n(t)\,\pi_{EN} + s_e(t)\,\pi_{EE},
+            -s_n(t)\,\pi_{EE} + s_e(t)\,\pi_{EN})
+        """
         NE = {}
         tt = {}
 
