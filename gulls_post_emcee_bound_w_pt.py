@@ -677,7 +677,8 @@ if __name__ == "__main__":
                 ax1.plot(tt, A_p, "-", color="blue", alpha=0.1, zorder=10)
 
             for obs in event_fit.data.keys():
-                t, f = event_fit.data[obs][0], event_fit.data[obs][1]
+                t = event_fit.data[obs][0]
+                f = event_fit.data[obs][1]
                 A_data = (f - fb_ref[obs]) / fs_ref[obs]
                 ax1.plot(
                     t,
@@ -685,6 +686,17 @@ if __name__ == "__main__":
                     ".",
                     color=colours[obs],
                     label=data_labels[obs],
+                    alpha=0.5,
+                    zorder=1,
+                )
+
+                # Residuals relative to the reference model
+                A_model = event_fit.get_magnification(t, obs=obs)
+                ax2.plot(
+                    t,
+                    A_data - A_model,
+                    ".",
+                    color=colours[obs],
                     alpha=0.5,
                     zorder=1,
                 )
@@ -754,6 +766,19 @@ if __name__ == "__main__":
                     ".",
                     color=colours[obs],
                     label=data_labels[obs],
+                    alpha=0.5,
+                    zorder=1,
+                )
+
+                # Residuals in magnitudes relative to the reference model
+                A_model = event_fit.get_magnification(t, obs=obs)
+                F_model = fs_ref[obs] * A_model + fb_ref[obs]
+                mag_model = -2.5 * np.log10(F_model) + mag_zp
+                ax2.plot(
+                    t,
+                    mag_data - mag_model,
+                    ".",
+                    color=colours[obs],
                     alpha=0.5,
                     zorder=1,
                 )
