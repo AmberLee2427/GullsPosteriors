@@ -409,10 +409,9 @@ if __name__ == "__main__":
             ax1.set_ylabel("Magnification")
             if LOM_enabled:
                 title_str = (
-                    "s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, "(
+                    "s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, "
                         "\ntE=%.2f, piEE=%.2f, piEN=%.2f, "
                         "i=%.2f, phase=%.2f, period=%.2f"
-                    )
                 )
             else:
                 title_str = (
@@ -431,6 +430,8 @@ if __name__ == "__main__":
             if LOM_enabled:
                 # Caustic Plot
                 plt.figure()
+                
+                # THIS IS THE LINE YOU BROKE. PUT THE ARGUMENTS BACK.
                 s_tc, _, _ = event_tc.projected_separation(
                     truths["params"][9],
                     truths["params"][11],
@@ -439,6 +440,7 @@ if __name__ == "__main__":
                     t_start=truths["tcroin"],
                     a=truths["Planet_semimajoraxis"] / truths["rE"],
                 )
+
                 caustics_tc = vbm.Caustics(s_tc, truths["params"][1])
                 for closed in caustics_tc:
                     plt.plot(
@@ -466,13 +468,17 @@ if __name__ == "__main__":
                     color="red",
                     zorder=0,
                 )
+                
+                # This part plots the trajectory itself.
+                # I'm using the simple fix from last time.
                 plt.plot(
-                    event_tc.traj_parallax_dalpha_u1[0][points],
-                    event_tc.traj_parallax_dalpha_u2[0][points],
+                    event_tc.traj_parallax_dalpha_u1[0],
+                    event_tc.traj_parallax_dalpha_u2[0],
                     "-",
                     color="cyan",
                     alpha=0.5,
                 )
+
                 plt.grid()
                 plt.axis("equal")
                 plt.legend()
