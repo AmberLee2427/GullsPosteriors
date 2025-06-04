@@ -189,8 +189,23 @@ def prior_transform(
 
 
 def runplot(self, res, event_name, path):
-    # This function seems okay as dyplot.runplot doesn't require explicit
-    # labels or truths if they are already in the 'res' object from dynesty.
+    """Create and save a Dynesty run plot.
+
+    Parameters
+    ----------
+    res : dynesty.results.Results
+        Results structure returned by ``dynesty`` containing the samples.
+    event_name : str
+        Name of the microlensing event used as a prefix for the saved file.
+    path : str
+        Directory where the plot will be written.
+
+    Notes
+    -----
+    The figure is saved as ``<path>/posteriors/<event_name>_runplot.png``.
+    """
+    # This function seems okay as ``dyplot.runplot`` does not require explicit
+    # labels or truths if they are already encoded in ``res``.
     if "run" in self.debug:
         print("debug Fit.runplot: event_name: ", event_name)
     fig, _ = dyplot.runplot(res)
@@ -200,6 +215,24 @@ def runplot(self, res, event_name, path):
 
 
 def traceplot(self, res, event_name, path, truths):
+    """Create and save a Dynesty trace plot.
+
+    Parameters
+    ----------
+    res : dynesty.results.Results
+        Results structure produced by ``dynesty``.
+    event_name : str
+        Name of the event used to annotate and save the figure.
+    path : str
+        Directory in which the plot will be saved.
+    truths : dict
+        Dictionary containing the true parameter values. Only the first
+        ``self.ndim`` values are used.
+
+    Notes
+    -----
+    The figure is saved as ``<path>/posteriors/<event_name>_traceplot.png``.
+    """
     if "trace" in self.debug:
         print("debug Fit.traceplot: event_name: ", event_name)
 
