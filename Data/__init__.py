@@ -54,12 +54,12 @@ class Data:
         The function maintains two files in ``path``:
 
         ``emcee_run_list.txt``
-            Records lightcurve files that have been processed.  The file will be
-            created if it does not already exist and the selected file will be
-            appended to it.
+            Records lightcurve files that have been processed.  The file will
+            be created if it does not already exist and the selected file will
+            be appended to it.
         ``emcee_complete.txt``
-            Created if missing.  The file is not modified by this routine but is
-            expected by later stages of the pipeline.
+            Created if missing.  The file is not modified by this routine but
+            is expected by later stages of the pipeline.
 
         ``new_event`` modifies ``emcee_run_list.txt`` on every successful call
         and therefore has file-system side effects.
@@ -144,11 +144,14 @@ class Data:
                     runlist = np.vstack(files[i])
                     np.savetxt('runlist.txt', runlist, fmt='%s')
                     data = mm.MulensData(file_name='data/' + files[i])
-                    true_params = np.loadtxt('true_params/' + files[i].split('.')[0] + '.txt')
+                    true_params = np.loadtxt(
+                        'true_params/' + files[i].split('.')[0] + '.txt'
+                    )
                     break"""
 
         print()
-        # this is fucking dumb, but the 'lcname's is the master file do not match the actual lc file names
+        # This is fucking dumb, but the 'lcname's in the master file do not
+        # match the actual lc file names
         if (
             file == truths["lcname"]
         ):  # check that the data file and true params match
@@ -173,8 +176,8 @@ class Data:
         Returns
         -------
         dict
-            Keys are observatory codes and values are ``(N, 8)`` arrays for that
-            observatory.
+            Keys are observatory codes and values are ``(N, 8)`` arrays for
+            that observatory.
 
         Notes
         -----
@@ -199,27 +202,35 @@ class Data:
 
         Magnitudes can be computed using:
 
-        ..math:
-            m = m_{source} + 2.5 log f_s - 2.5 log{F}
+        .. math::
+            m = m_{source} + 2.5 \log f_s - 2.5 \log{F}
 
-        where :math:`F=fs*\mu + (1-fs)` is the relative flux (in the file), :math:`\mu` is the magnification, and
+        where :math:`F=fs*\mu + (1-fs)` is the relative flux (in the file),
+        :math:`\mu` is the magnification, and
 
-        ..math:
-            \sigma_m = 2.5/ln{10} \sigma_F/F.
+        .. math::
+            \sigma_m = 2.5/\ln{10} \sigma_F/F.
 
-        These are listed in the header information in lines #fs and #Obssrcmag with order matching the observatory code order.
+        These are listed in the header information in lines ``#fs`` and
+        ``#Obssrcmag`` with order matching the observatory code order.
         The observatory codes correspond to 0=W146, 1=Z087, 2=K213
 
         Bugs/issues/caveats:
-        The output file columns list a limb darkening parameter of Gamma=0, it is actually Gamma=0.36 (in all filters)
-        The orbit for the Z087 observatory appears to be different to the W146 and K213 observatory
-        Dev is working on producing the ephemerides, but for single observatory parallax, using interpolated versions of the ones
-        available for the data challenge will probably be accurate enough, or an Earth ephemeris with the semimajor axis (but
-        not period) increased by 0.01 AU
-        Lenses with masses smaller than the isochrone grid limits (I believe 0.1 MSun, will have filler values for magnitudes
-        and lens stellar properties).
-        There may be some spurious detections in the list where the single lens fit failed. Please let dev know if you find any
-        of these events so that we can improve the single lens fitter."""
+        The output file columns list a limb darkening parameter of Gamma=0, it
+        is actually Gamma=0.36 (in all filters).
+        The orbit for the Z087 observatory appears to be different to the W146
+        and K213 observatories.
+        Dev is working on producing the ephemerides, but for single observatory
+        parallax, using interpolated versions of the ones available for the
+        data challenge will probably be accurate enough, or an Earth ephemeris
+        with
+        the semimajor axis (but not period) increased by 0.01 AU.
+        Lenses with masses smaller than the isochrone grid limits (I believe
+        0.1 MSun) will have filler values for magnitudes and lens stellar
+        properties.
+        There may be some spurious detections in the list where the single lens
+        fit failed. Please let dev know if you find any of these events so that
+        we can improve the single lens fitter."""
 
         header = [
             "Simulation_time",
