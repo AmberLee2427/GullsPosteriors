@@ -718,7 +718,7 @@ if __name__ == "__main__":
             )
 
             F = fs_ref[0] * A0_fit + fb_ref[0]
-            mag = -2.5 * np.log10(F - mag_zp)
+            mag = -2.5 * np.log10(F) + mag_zp
             ax1.plot(
                 tt,
                 mag,
@@ -735,13 +735,13 @@ if __name__ == "__main__":
                 event_fit.set_params(p)
                 A_p = event_fit.get_magnification(tt, obs=0)
                 Fp = fs_ref[0] * A_p + fb_ref[0]
-                mag_p = -2.5 * np.log10(Fp - mag_zp)
+                mag_p = -2.5 * np.log10(Fp) + mag_zp
                 ax1.plot(tt, mag_p, "-", color="blue", alpha=0.1, zorder=10)
 
             for obs in event_fit.data.keys():
                 t = event_fit.data[obs][0]
                 f = event_fit.data[obs][1]
-                mag_data = -2.5 * np.log10(f - mag_zp)
+                mag_data = -2.5 * np.log10(f) + mag_zp
                 ax1.plot(
                     t,
                     mag_data,
