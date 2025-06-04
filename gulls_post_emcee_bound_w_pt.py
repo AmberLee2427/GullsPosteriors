@@ -706,6 +706,64 @@ if __name__ == "__main__":
             )
             plt.close(fig)
 
+            # --- Magnitude Lightcurve Plot ---
+            mag_zp = 25
+
+            fig, (ax1, ax2) = plt.subplots(
+                2,
+                1,
+                sharex=True,
+                gridspec_kw={"height_ratios": [3, 2]},
+                figsize=(12, 8),
+            )
+
+            F = fs_ref[0] * A0_fit + fb_ref[0]
+            mag = -2.5 * np.log10(F - mag_zp)
+            ax1.plot(
+                tt,
+                mag,
+                "--",
+                color="r",
+                alpha=0.7,
+                zorder=5,
+                label="Truth Model",
+            )
+
+            chain_index = np.random.randint(0, len(samples_phys), ns)
+            for k in range(ns):
+                p = samples_phys[chain_index[k], :]
+                event_fit.set_params(p)
+                A_p = event_fit.get_magnification(tt, obs=0)
+                Fp = fs_ref[0] * A_p + fb_ref[0]
+                mag_p = -2.5 * np.log10(Fp - mag_zp)
+                ax1.plot(tt, mag_p, "-", color="blue", alpha=0.1, zorder=10)
+
+            for obs in event_fit.data.keys():
+                t = event_fit.data[obs][0]
+                f = event_fit.data[obs][1]
+                mag_data = -2.5 * np.log10(f - mag_zp)
+                ax1.plot(
+                    t,
+                    mag_data,
+                    ".",
+                    color=colours[obs],
+                    label=data_labels[obs],
+                    alpha=0.5,
+                    zorder=1,
+                )
+
+            ax1.set_ylabel("Magnitude")
+            ax1.invert_yaxis()
+            ax2.set_ylabel("Residuals")
+            ax2.set_xlabel("BJD")
+            ax1.set_title(title_str % tuple(p0))
+            ax1.legend()
+            plt.savefig(
+                path + "posteriors/" + event_name + "_mag_lightcurve_samples.png",
+                dpi=300,
+            )
+            plt.close(fig)
+
         end_final_figures = time.time()
         print("Time to make final figures = ", end_final_figures - end_sampler)
 
