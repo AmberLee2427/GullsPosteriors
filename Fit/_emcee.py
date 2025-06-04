@@ -5,13 +5,28 @@ import corner
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import multiprocessing as mp
-mp.set_start_method('fork', force=True)
+
+mp.set_start_method("fork", force=True)
 
 
 def run_emcee(
-        self, nl, ndim, stepi, mi, log_prob_function, state,
-        event_obj, truths, prange_linear, prange_log, normal,
-        threads=1, event_name='', path='./', labels=None):
+    self,
+    nl,
+    ndim,
+    stepi,
+    mi,
+    log_prob_function,
+    state,
+    event_obj,
+    truths,
+    prange_linear,
+    prange_log,
+    normal,
+    threads=1,
+    event_name="",
+    path="./",
+    labels=None,
+):
     """Run an ``emcee`` ensemble sampler.
 
     Parameters
@@ -58,7 +73,9 @@ def run_emcee(
     if threads > 1:
         with Pool(threads) as pool:
             # Initialize the sampler with the new arguments
-            sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=log_prob_args, pool=pool)
+            sampler = emcee.EnsembleSampler(
+                nl, ndim, log_prob_function, args=log_prob_args, pool=pool
+            )
 
             # --- The rest of the function is identical ---
             # Run the sampler
@@ -70,9 +87,18 @@ def run_emcee(
                 flatlnprobability = sampler.flatlnprobability
 
                 # Save the samples
-                np.save(path+'posteriors/'+event_name+'_emcee_samples.npy', flatchain)
-                np.save(path+'posteriors/'+event_name+'_emcee_lnprob.npy', flatlnprobability)
-                np.save(path+'posteriors/'+event_name+'_emcee_state.npy', state)
+                np.save(
+                    path + "posteriors/" + event_name + "_emcee_samples.npy",
+                    flatchain,
+                )
+                np.save(
+                    path + "posteriors/" + event_name + "_emcee_lnprob.npy",
+                    flatlnprobability,
+                )
+                np.save(
+                    path + "posteriors/" + event_name + "_emcee_state.npy",
+                    state,
+                )
 
                 self.plot_chain(sampler, event_name, path, labels=labels)
 
@@ -81,7 +107,9 @@ def run_emcee(
 
     else:
         # Initialize the sampler with the new arguments
-        sampler = emcee.EnsembleSampler(nl, ndim, log_prob_function, args=log_prob_args)
+        sampler = emcee.EnsembleSampler(
+            nl, ndim, log_prob_function, args=log_prob_args
+        )
 
         # --- The rest of the function is identical ---
         # Run the sampler
@@ -93,9 +121,17 @@ def run_emcee(
             flatlnprobability = sampler.flatlnprobability
 
             # Save the samples
-            np.save(path+'posteriors/'+event_name+'_emcee_samples.npy', flatchain)
-            np.save(path+'posteriors/'+event_name+'_emcee_lnprob.npy', flatlnprobability)
-            np.save(path+'posteriors/'+event_name+'_emcee_state.npy', state)
+            np.save(
+                path + "posteriors/" + event_name + "_emcee_samples.npy",
+                flatchain,
+            )
+            np.save(
+                path + "posteriors/" + event_name + "_emcee_lnprob.npy",
+                flatlnprobability,
+            )
+            np.save(
+                path + "posteriors/" + event_name + "_emcee_state.npy", state
+            )
 
             self.plot_chain(sampler, event_name, path, labels=labels)
 
@@ -105,7 +141,9 @@ def run_emcee(
     return sampler
 
 
-def lnprob_transform(self, u, event, true, prange_linear, prange_log, normal=False):
+def lnprob_transform(
+    self, u, event, true, prange_linear, prange_log, normal=False
+):
     """Convert unit-cube samples to log-probability values.
 
     Parameters
@@ -136,7 +174,8 @@ def lnprob_transform(self, u, event, true, prange_linear, prange_log, normal=Fal
     # Call the new, improved prior_transform with the correct arguments
     theta = self.prior_transform(u, true, prange_linear, prange_log, normal)
 
-    # Calculate the log probability (likelihood) with the transformed parameters
+    # Calculate the log probability (likelihood) with the transformed
+    # parameters
     lp = self.lnprob(theta, event)
 
     return lp
@@ -164,9 +203,9 @@ def plot_chain(self, res, event_name, path, labels=None, pt_args=[]):
     """
 
     chain = res.chain  # shape = (nwalkers, nsteps, ndim)
-    #print('Debug Fit.plot_chain: chain shape: ', chain.shape)
+    # print('Debug Fit.plot_chain: chain shape: ', chain.shape)
     lnprobability = res.lnprobability  # shape = (nwalkers, nsteps)
-    #print('Debug Fit.plot_chain: lnprobability shape: ', lnprobability.shape)
+    # print('Debug Fit.plot_chain: lnprobability shape: ', lnprobability.shape)
     ndim = chain.shape[2]
     nsteps = chain.shape[1]
     nwalkers = chain.shape[0]
@@ -174,14 +213,14 @@ def plot_chain(self, res, event_name, path, labels=None, pt_args=[]):
     if labels is None:
         labels = [f"theta[{i}]" for i in range(ndim)]
 
-    fig, axes = plt.subplots(ndim+1, figsize=(10, 7), sharex=True)
+    fig, axes = plt.subplots(ndim + 1, figsize=(10, 7), sharex=True)
     for i in range(ndim):
         ax = axes[i]
         for j in range(nwalkers):
             ax.plot(chain[j, :, i], "k", alpha=0.1)
         ax.set_xlim(0, nsteps)
         ax.set_ylabel(labels[i])
-        #ax.yaxis.set_label_coords(-0.1, 0.5)
+        # ax.yaxis.set_label_coords(-0.1, 0.5)
 
     ax = axes[-1]
     for j in range(nwalkers):
@@ -192,7 +231,7 @@ def plot_chain(self, res, event_name, path, labels=None, pt_args=[]):
 
     axes[-1].set_xlabel("step number")
     fig.suptitle(event_name)
-    fig.savefig(path+'posteriors/'+event_name+'_chain.png')
+    fig.savefig(path + "posteriors/" + event_name + "_chain.png")
     plt.close(fig)
 
 
@@ -216,20 +255,33 @@ def corner_post(self, samples, event_name, path, truths):
     """
 
     if self.LOM_enabled:
-        labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN', 'i', 'phase', 'period']
-        true_params = truths['params']
+        labels = [
+            "s",
+            "q",
+            "rho",
+            "u0",
+            "alpha",
+            "t0",
+            "tE",
+            "piEE",
+            "piEN",
+            "i",
+            "phase",
+            "period",
+        ]
+        true_params = truths["params"]
     else:
-        labels = ['s', 'q', 'rho', 'u0', 'alpha', 't0', 'tE', 'piEE', 'piEN']
-        true_params = truths['params'][:9] # Use only the first 9 truth values
+        labels = ["s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN"]
+        true_params = truths["params"][:9]  # Use only the first 9 truth values
 
     fig = corner.corner(samples, labels=labels, truths=true_params)
     plt.title(event_name)
 
-    fig.savefig(path+'posteriors/'+event_name+'_corner.png')
+    fig.savefig(path + "posteriors/" + event_name + "_corner.png")
     plt.close(fig)
 
-    if 'corner' in self.debug:
-        print('debug Fit.corner_post: labels: ', labels)
-        print('debug Fit.corner_post: truths: ', truths['params'])
-        print('debug Fit.corner_post: event_name: ', event_name)
-        print('debug Fit.corner_post: path: ', path)
+    if "corner" in self.debug:
+        print("debug Fit.corner_post: labels: ", labels)
+        print("debug Fit.corner_post: truths: ", truths["params"])
+        print("debug Fit.corner_post: event_name: ", event_name)
+        print("debug Fit.corner_post: path: ", path)

@@ -14,7 +14,9 @@ from astropy.coordinates import CartesianRepresentation, CartesianDifferential
 from astropy import units as u
 
 # Ensure the package root is on the path when running via ``pytest -q``.
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 
 from Orbit import Orbit
 
