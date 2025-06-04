@@ -1,3 +1,7 @@
+import numpy as np
+import pandas as pd
+
+
 def lightcurve_data_reader(subrun, lc_id, *, folder_path="data"):
     """Read the lightcurve file and compute magnitudes.
 
