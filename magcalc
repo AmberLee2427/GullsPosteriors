@@ -1,15 +1,25 @@
-def lightcurve_data_reader(SubRun, ID, *, folder_path_="data"):
-    """
-    This function reads the lightcurve data file and returns a pandas
-    dataframe with the BJD Magnitude Error columns
-    :param folder_path_:
-    :param data_challenge_lc_number_:
-    :param filter_:
-    :return: lightcurve_data_df
-    """
-    fname = f"OMPLLD_croin_cassan_{SubRun}_0_{ID}.det.lc"
+def lightcurve_data_reader(subrun, lc_id, *, folder_path="data"):
+    """Read the lightcurve file and compute magnitudes.
 
-    with open(f"{folder_path_}/{fname}", "r") as f:
+    Parameters
+    ----------
+    subrun : str or int
+        Identifier for the subrun used to build the filename.
+    lc_id : int
+        Identifier of the light curve.
+    folder_path : str, optional
+        Directory where the ``.det.lc`` files are stored. Defaults to
+        ``"data"``.
+
+    Returns
+    -------
+    list of pandas.DataFrame
+        A list containing one dataframe per observatory with columns
+        ``['mag', 'mag_err', 'days']``.
+    """
+    fname = f"OMPLLD_croin_cassan_{subrun}_0_{lc_id}.det.lc"
+
+    with open(f"{folder_path}/{fname}", "r") as f:
         fs = f.readline()
         fs = np.array(fs.split(" ")[1:4]).astype(float)
         f.readline()
@@ -36,7 +46,7 @@ def lightcurve_data_reader(SubRun, ID, *, folder_path_="data"):
         "lens2_y",
     ]
     lightcurve_data_df = pd.read_csv(
-        f"{folder_path_}/{fname}", names=columns, comment="#", sep="\s+"
+        f"{folder_path}/{fname}", names=columns, comment="#", sep="\s+"
     )
     lightcurve_data_df["days"] = lightcurve_data_df["BJD"] - 2450000
     lightcurve_list = []
