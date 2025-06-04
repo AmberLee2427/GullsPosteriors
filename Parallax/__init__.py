@@ -102,6 +102,14 @@ class Parallax:
     # Event->pllx[obsidx].set_tE_h(Event->tE_h)  # tE in the heliocentric frame
 
     def set_ref_frame(self, t_ref):
+        """Define the reference frame for the parallax calculation.
+
+        Parameters
+        ----------
+        t_ref : float
+            Reference time in Julian days used to centre the parallax shift.
+        """
+
         self.tref = t_ref  # bjd
         self.xref = self.orbit.get_pos(t_ref)
         self.vref = self.orbit.get_vel(t_ref)
@@ -121,7 +129,18 @@ class Parallax:
         self.piE = np.array([piEN, piEE])
 
     def dperp():
-        """calculate the perpendicular distance to the source"""
+        """Return the distance perpendicular to the line of sight.
+
+        Returns
+        -------
+        float
+            Perpendicular separation in astronomical units.
+
+        Notes
+        -----
+        This method is currently not implemented and returns ``None``.
+        """
+
         pass
 
     def rotate_view(self):
@@ -162,7 +181,21 @@ class Parallax:
         self.vref = np.dot(self.rot_matrix, self.vref)
 
     def counter_rotate(self, v, phi):
-        """counter rotate the vector v by phi"""
+        """Rotate a 2-D vector by ``-phi``.
+
+        Parameters
+        ----------
+        v : array_like
+            Array of shape ``(N, 2)`` containing the vectors to be rotated.
+        phi : float or array_like
+            Angle(s) in radians for the rotation.
+
+        Returns
+        -------
+        numpy.ndarray
+            Rotated vectors with the same shape as ``v``.
+        """
+
         cosp = np.cos(-phi)
         sinp = np.sin(-phi)
         return np.array(
