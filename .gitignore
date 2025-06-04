@@ -45,6 +45,10 @@ log.*
 
 # Ignore pycache
 __pycache__/
+Data/__pycache__/
+Event/__pycache__/
+Fit/__pycache__/
+Orbit/__pycache__/
 
 # Ignore ZIP folder
 ZIPME/
