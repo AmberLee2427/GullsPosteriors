@@ -42,3 +42,9 @@ log.*
 *.zip
 *.rar
 *.7z
+
+# Ignore pycache
+__pycache__/
+
+# Ignore ZIP folder
+ZIPME/
