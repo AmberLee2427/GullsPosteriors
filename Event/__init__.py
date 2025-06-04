@@ -347,7 +347,28 @@ class Event:
     def croin(
         self, t0: float, u0: float, s: float, q: float, alpha: float, tE: float
     ):
-        """recalculate tcroin given t0 etc."""
+        """Calculate the centre-of-mass reference epoch.
+
+        Parameters
+        ----------
+        t0 : float
+            Time of closest approach to the primary lens in BJD.
+        u0 : float
+            Impact parameter relative to the primary lens.
+        s : float
+            Lens separation at ``t0`` in units of ``theta_E``.
+        q : float
+            Mass ratio of the binary ``m2/m1``.
+        alpha : float
+            Source trajectory angle in radians.
+        tE : float
+            Einstein crossing time of the event.
+
+        Returns
+        -------
+        float
+            The computed value of ``tcroin`` in Barycentric Julian Date.
+        """
 
         sina = np.sin(alpha)
         cosa = np.cos(alpha)
