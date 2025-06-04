@@ -384,7 +384,23 @@ class Event:
         return tc
 
     def get_magnification(self, t, obs=None, pp=None):
-        """Calculate the magnification"""
+        """Return the magnification for a set of epochs.
+
+        Parameters
+        ----------
+        t : float or array_like
+            Times of evaluation in Barycentric Julian Date.
+        obs : str, optional
+            Observatory code used when storing trajectory diagnostics. If
+            ``None`` no observatory specific information is kept.
+        pp : array_like, optional
+            Parameter vector overriding ``self.params`` when provided.
+
+        Returns
+        -------
+        ndarray
+            Magnification values corresponding to ``t``.
+        """
 
         if pp is None:
             p = self.params.copy()
