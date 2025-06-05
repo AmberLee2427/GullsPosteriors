@@ -128,20 +128,36 @@ class Parallax:
 
         self.piE = np.array([piEN, piEE])
 
-    def dperp():
+    def dperp(self, t1, t2=None):
         """Return the distance perpendicular to the line of sight.
+
+        The separation is computed between two heliocentric positions.  When a
+        second epoch is not supplied the reference time ``tref`` is used.
+
+        Parameters
+        ----------
+        t1 : float or array_like
+            Times (JD) of the first position.
+        t2 : float or array_like, optional
+            Times (JD) of the second position.  If ``None`` ``self.tref`` is
+            used.
 
         Returns
         -------
-        float
-            Perpendicular separation in astronomical units.
-
-        Notes
-        -----
-        This method is currently not implemented and returns ``None``.
+        numpy.ndarray
+            Perpendicular separation in astronomical units.  A scalar is
+            returned when ``t1`` and ``t2`` are single values.
         """
 
-        pass
+        pos1 = self.orbit.get_pos(t1)
+        if t2 is None:
+            pos2 = self.orbit.get_pos(self.tref)
+        else:
+            pos2 = self.orbit.get_pos(t2)
+
+        delta = pos1 - pos2
+        cross = np.cross(self.rad, delta.T).T
+        return np.linalg.norm(cross, axis=0)
 
     def rotate_view(self):
         """Rotate observatory vectors into the event frame.
