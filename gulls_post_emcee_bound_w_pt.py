@@ -51,6 +51,10 @@ if __name__ == "__main__":
     plot_initial_figures = True
     plot_final_figures = True
 
+    # Number of steps to discard from the start of the chain when
+    # constructing posterior diagnostic plots.
+    burnin_steps = 500
+
     if "-f" in sys.argv:
         plot_index = sys.argv.index("-f") + 1
         plot_options = sys.argv[plot_index]
@@ -608,7 +612,15 @@ if __name__ == "__main__":
             pickle.dump(truths, f)
 
         if plot_post:
-            fit_obj.corner_post(samples_phys, event_name, path, truths)
+            flat_chain_post = sampler.get_chain(discard=burnin_steps, flat=True)
+            samples_for_corner = fit_obj.prior_transform(
+                flat_chain_post,
+                truths["params"][:ndim],
+                prange_linear,
+                prange_log,
+                normal=True,
+            )
+            fit_obj.corner_post(samples_for_corner, event_name, path, truths)
         if plot_trace:
             # Assuming traceplot exists
             fit_obj.traceplot(sampler, event_name, path, truths)
