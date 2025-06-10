@@ -61,6 +61,7 @@ class Fit:
         LOM_enabled=True,
         ndim=None,
         labels=None,
+        show_progress=False,
     ):
         """Initialise a sampler wrapper.
 
@@ -76,6 +77,8 @@ class Fit:
             Number of parameters in the model.
         labels : list of str or None, optional
             Parameter labels used for corner plots.
+        show_progress : bool, optional
+            Whether to show progress bars during MCMC sampling.
 
         Attributes
         ----------
@@ -89,6 +92,8 @@ class Fit:
             Dimensionality of the parameter space.
         labels : list of str or None
             Labels for each parameter.
+        show_progress : bool
+            Whether to show progress bars during MCMC sampling.
         """
 
         if debug is not None:
@@ -104,6 +109,7 @@ class Fit:
         self.LOM_enabled = LOM_enabled
         self.ndim = ndim  # NEW: Store ndim
         self.labels = labels  # NEW: Store labels
+        self.show_progress = show_progress  # NEW: Store show_progress
 
     def get_fluxes(self, model: np.ndarray, f: np.ndarray, sig2: np.ndarray):
         """Solve for the source and blend fluxes.

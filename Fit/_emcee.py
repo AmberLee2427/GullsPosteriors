@@ -85,7 +85,7 @@ def run_emcee(
             count = 0
             steps = 0
             while steps < mi:
-                state, lnp, _ = sampler.run_mcmc(state, stepi, progress=True)
+                state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
                 flatchain = sampler.flatchain
                 flatlnprobability = sampler.flatlnprobability
 
@@ -119,7 +119,7 @@ def run_emcee(
         steps = 0
         count = 0
         while steps < mi:
-            state, lnp, _ = sampler.run_mcmc(state, stepi, progress=True)
+            state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
             flatchain = sampler.flatchain
             flatlnprobability = sampler.flatlnprobability
 
@@ -244,7 +244,7 @@ def run_burnin(
     expansion_threshold = 0.3
 
     while steps < max_steps and no_expand < 2:
-        state, _, _ = sampler.run_mcmc(state, stepi, progress=True)
+        state, _, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
 
         np.save(path + f"posteriors/{event_name}_burnin_samples.npy", sampler.flatchain)
         np.save(path + f"posteriors/{event_name}_burnin_lnprob.npy", sampler.flatlnprobability)
@@ -252,7 +252,8 @@ def run_burnin(
 
         self.plot_chain(sampler, f"{event_name}_burnin", path, labels=labels)
 
-        positions = state.coords
+        # Update for emcee 3.x API
+        positions = state
         expanded = False
 
         for j, idx in enumerate(log_indices):
@@ -285,8 +286,7 @@ def run_burnin(
 
         if expanded:
             log_prob, _ = sampler.compute_log_prob(positions)
-            state.coords = positions
-            state.log_prob = log_prob
+            state = positions  # Update for emcee 3.x API
             no_expand = 0
         else:
             no_expand += 1
