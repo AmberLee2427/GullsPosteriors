@@ -45,6 +45,7 @@ log.*
 
 # Ignore pycache
 __pycache__/
+*.pyc
 Data/__pycache__/
 Event/__pycache__/
 Fit/__pycache__/
