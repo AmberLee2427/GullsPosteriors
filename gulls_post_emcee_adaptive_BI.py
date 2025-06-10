@@ -1,5 +1,5 @@
-"""Command line interface to run posterior sampling on gull events, with
-emcee, and a prior transform that bounds the parameters."""
+"""Command line interface to run posterior sampling on gull events, using 
+emcee, with adaptive burnin."""
 
 # import multiprocessing
 # multiprocessing.set_start_method('fork', force=True)
