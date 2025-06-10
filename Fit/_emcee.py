@@ -296,7 +296,7 @@ def run_burnin(
     if pool_ctx is not None:
         pool_ctx.close()
 
-    return state, p_unc
+    return state, p_unc, prange_linear, prange_log
 
 
 def lnprob_transform(
