@@ -144,6 +144,161 @@ def run_emcee(
     return sampler
 
 
+def run_burnin(
+    self,
+    nl,
+    ndim,
+    stepi,
+    max_steps,
+    log_prob_function,
+    state,
+    event_obj,
+    truths,
+    prange_linear,
+    prange_log,
+    p_unc,
+    normal,
+    threads=1,
+    event_name="",
+    path="./",
+    labels=None,
+):
+    """Run a short ``emcee`` burn-in phase expanding priors as needed.
+
+    After every ``stepi`` iterations the walker coordinates are inspected. If a
+    significant fraction of walkers crowd the unit-cube boundaries the prior
+    widths are increased by 20\% and the walker coordinates are rescaled to the
+    enlarged cube. The routine stops when ``max_steps`` is reached or when two
+    consecutive iterations require no further expansion.
+
+    Parameters
+    ----------
+    nl : int
+        Number of walkers.
+    ndim : int
+        Number of model parameters.
+    stepi : int
+        Interval between sampler checkpoints.
+    max_steps : int
+        Maximum burn-in steps to run.
+    log_prob_function : callable
+        Function computing the log-probability.
+    state : :class:`emcee.State`
+        Initial state of the walkers.
+    event_obj : Event
+        Microlensing event providing the likelihood.
+    truths : array_like
+        Central values defining the priors.
+    prange_linear : array_like
+        Half-widths for linear parameters.
+    prange_log : array_like
+        Half-widths in dex for log parameters.
+    p_unc : array_like
+        Array of parameter uncertainties to update.
+    normal : bool
+        If ``True``, use normal rather than uniform priors.
+    threads : int, optional
+        Number of worker processes.
+    event_name : str, optional
+        Prefix for saved diagnostic files.
+    path : str, optional
+        Directory where output is written.
+    labels : list of str or None, optional
+        Parameter labels.
+
+    Returns
+    -------
+    emcee.State
+        Final sampler state after burn-in.
+    ndarray
+        Updated ``p_unc`` array reflecting any prior expansions.
+    """
+
+    if hasattr(mp, "set_start_method"):
+        try:
+            mp.set_start_method("fork")
+        except RuntimeError:
+            pass
+
+    log_prob_args = [event_obj, truths, prange_linear, prange_log, normal]
+
+    labels = labels if labels is not None else self.labels
+
+    if threads > 1:
+        pool_ctx = Pool(threads)
+    else:
+        pool_ctx = None
+
+    sampler = emcee.EnsembleSampler(
+        nl, ndim, log_prob_function, args=log_prob_args, pool=pool_ctx
+    )
+
+    log_param_names = ["s", "q", "rho"]
+    if self.LOM_enabled:
+        log_param_names.append("period")
+    log_indices = [i for i, l in enumerate(labels) if l in log_param_names]
+    lin_indices = [i for i in range(ndim) if i not in log_indices]
+
+    steps = 0
+    no_expand = 0
+    expansion_threshold = 0.3
+
+    while steps < max_steps and no_expand < 2:
+        state, _, _ = sampler.run_mcmc(state, stepi, progress=True)
+
+        np.save(path + f"posteriors/{event_name}_burnin_samples.npy", sampler.flatchain)
+        np.save(path + f"posteriors/{event_name}_burnin_lnprob.npy", sampler.flatlnprobability)
+        np.save(path + f"posteriors/{event_name}_burnin_state.npy", state)
+
+        self.plot_chain(sampler, f"{event_name}_burnin", path, labels=labels)
+
+        positions = state.coords
+        expanded = False
+
+        for j, idx in enumerate(log_indices):
+            frac = np.mean((positions[:, idx] < 0.05) | (positions[:, idx] > 0.95))
+            if frac > expansion_threshold:
+                old_range = prange_log[j]
+                prange_log[j] *= 1.2
+                p_unc[idx] *= 1.2
+                new_range = prange_log[j]
+                center = truths[idx]
+                old_min = np.log10(center) - old_range / 2.0
+                new_min = np.log10(center) - new_range / 2.0
+                phys = old_min + positions[:, idx] * old_range
+                positions[:, idx] = (phys - new_min) / new_range
+                expanded = True
+
+        for j, idx in enumerate(lin_indices):
+            frac = np.mean((positions[:, idx] < 0.05) | (positions[:, idx] > 0.95))
+            if frac > expansion_threshold:
+                old_range = prange_linear[j]
+                prange_linear[j] *= 1.2
+                p_unc[idx] *= 1.2
+                new_range = prange_linear[j]
+                center = truths[idx]
+                old_min = center - old_range / 2.0
+                new_min = center - new_range / 2.0
+                phys = old_min + positions[:, idx] * old_range
+                positions[:, idx] = (phys - new_min) / new_range
+                expanded = True
+
+        if expanded:
+            log_prob, _ = sampler.compute_log_prob(positions)
+            state.coords = positions
+            state.log_prob = log_prob
+            no_expand = 0
+        else:
+            no_expand += 1
+
+        steps += stepi
+
+    if pool_ctx is not None:
+        pool_ctx.close()
+
+    return state, p_unc
+
+
 def lnprob_transform(
     self, u, event, true, prange_linear, prange_log, normal=False
 ):
