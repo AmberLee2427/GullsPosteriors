@@ -55,6 +55,7 @@ if __name__ == "__main__":
     # Number of steps to discard from the start of the chain when
     # constructing posterior diagnostic plots.
     burnin_steps = 500
+    burnin_max_steps = 1000
 
     if "-f" in sys.argv:
         plot_index = sys.argv.index("-f") + 1
@@ -573,13 +574,32 @@ if __name__ == "__main__":
             LOM_enabled=LOM_enabled,
         )
 
+        state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
+            nl,
+            ndim,
+            stepi,
+            burnin_max_steps,
+            fit_obj.lnprob_transform,
+            initial_pos,
+            event_fit,
+            truths["params"],
+            prange_linear,
+            prange_log,
+            p_unc,
+            normal,
+            threads=threads,
+            event_name=event_name,
+            path=path,
+            labels=labels,
+        )
+
         sampler = fit_obj.run_emcee(
             nl,
             ndim,
             stepi,
             mi,
             fit_obj.lnprob_transform,
-            initial_pos,
+            state,
             event_fit,
             truths["params"],
             prange_linear,

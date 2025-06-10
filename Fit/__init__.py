@@ -41,7 +41,13 @@ class Fit:
         Labels corresponding to each model parameter.
     """
 
-    from ._emcee import run_emcee, lnprob_transform, plot_chain, corner_post
+    from ._emcee import (
+        run_emcee,
+        run_burnin,
+        lnprob_transform,
+        plot_chain,
+        corner_post,
+    )
 
     # prior_transform will now be fully defined in _dynesty.py
     # runplot and traceplot are also in _dynesty.py
