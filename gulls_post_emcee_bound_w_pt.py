@@ -540,8 +540,10 @@ if __name__ == "__main__":
         )
 
         # Cropping data to near-event for fitting
-        tmin_fit = fit_tref - 1.5 * tE
-        tmax_fit = fit_tref + 1.5 * tE
+        t0_win = truths["params"][5]
+        tE_win = truths["params"][6]
+        tmin_fit = min(t0_win - 1.5 * tE_win, tc_calc - 1.5 * tE_win)
+        tmax_fit = max(t0_win + 1.5 * tE_win, tc_calc + 1.5 * tE_win)
 
         data_cropped = {}
         for obs_key in data.keys():
