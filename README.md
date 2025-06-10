@@ -22,10 +22,17 @@ packages and a few run scripts that drive end‑to‑end fits.
 
 ## Installing
 
-Create a conda environment using the packages listed in `environment.yml`:
+Create and activate a conda environment using the packages listed in `environment.yml`:
 
 ```bash
+# Create the environment
 conda env create -f environment.yml
+
+# Activate the environment
+conda activate GullsPosteriors
+
+# Verify the installation
+python -c "import emcee; import dynesty; import VBMicrolensing; print('Installation successful!')"
 ```
 
 Key dependencies include Python 3.8, `emcee`, `dynesty` and the external
