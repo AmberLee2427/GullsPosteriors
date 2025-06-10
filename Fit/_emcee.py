@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import multiprocessing as mp
 
-mp.set_start_method("fork", force=True)
-
 
 def run_emcee(
     self,
@@ -67,6 +65,11 @@ def run_emcee(
     emcee.EnsembleSampler
         The sampler instance after completion.
     """
+    if hasattr(mp, "set_start_method"):
+        try:
+            mp.set_start_method("fork")
+        except RuntimeError:
+            pass
     # The new arguments to be passed to the log probability function
     log_prob_args = [event_obj, truths, prange_linear, prange_log, normal]
 
