@@ -62,6 +62,7 @@ class Fit:
         ndim=None,
         labels=None,
         show_progress=False,
+        sigma_fb=50.0,
     ):
         """Initialise a sampler wrapper.
 
@@ -79,6 +80,8 @@ class Fit:
             Parameter labels used for corner plots.
         show_progress : bool, optional
             Whether to show progress bars during MCMC sampling.
+        sigma_fb : float, optional
+            Standard deviation for the Gaussian prior on negative blend flux.
 
         Attributes
         ----------
@@ -94,6 +97,10 @@ class Fit:
             Labels for each parameter.
         show_progress : bool
             Whether to show progress bars during MCMC sampling.
+        current_event : Event or None
+            The current microlensing event being fitted.
+        sigma_fb : float
+            Standard deviation for the Gaussian prior on negative blend flux.
         """
 
         if debug is not None:
@@ -110,6 +117,8 @@ class Fit:
         self.ndim = ndim  # NEW: Store ndim
         self.labels = labels  # NEW: Store labels
         self.show_progress = show_progress  # NEW: Store show_progress
+        self.current_event = None  # NEW: Store current event
+        self.sigma_fb = sigma_fb  # NEW: Store sigma_fb
 
     def get_fluxes(self, model: np.ndarray, f: np.ndarray, sig2: np.ndarray):
         """Solve for the source and blend fluxes.
@@ -276,18 +285,42 @@ class Fit:
                 and s > 0.001
                 and rho > 0.0
             ):
-                return 0.0  # Add bound_penalty logic if you ever use it
-            else:  # Debug prints for failing conditions
-                # ... (your original debug prints for tE, q, period/tE, s, rho)
+                # Only check blend flux if we have a current event
+                if self.current_event is not None:
+                    # Get blend flux for this parameter set
+                    t = self.current_event.data[list(self.current_event.data.keys())[0]][0]  # Get times from first observatory
+                    A = self.current_event.get_magnification(t, list(self.current_event.data.keys())[0])
+                    f = self.current_event.data[list(self.current_event.data.keys())[0]][1]  # Get fluxes
+                    f_err = self.current_event.data[list(self.current_event.data.keys())[0]][2]  # Get errors
+                    _, fb = self.get_fluxes(A, f, f_err**2)
+                    
+                    # Add Gaussian prior on negative blend flux
+                    if fb < 0:
+                        # Allow small negative values but penalize large ones
+                        return -0.5 * (fb / self.sigma_fb)**2
+                return 0.0
+            else:
                 return -np.inf
         else:  # No LOM
             s, q, rho, u0, alpha, t0, tE, piEE, piEN = theta
             if "ln_prior" in self.debug:
                 print("debug Fit.lnprior (No LOM):", theta)
             if tE > 0.0 and q <= 1.0 and s > 0.001 and rho > 0.0:
+                # Only check blend flux if we have a current event
+                if self.current_event is not None:
+                    # Get blend flux for this parameter set
+                    t = self.current_event.data[list(self.current_event.data.keys())[0]][0]  # Get times from first observatory
+                    A = self.current_event.get_magnification(t, list(self.current_event.data.keys())[0])
+                    f = self.current_event.data[list(self.current_event.data.keys())[0]][1]  # Get fluxes
+                    f_err = self.current_event.data[list(self.current_event.data.keys())[0]][2]  # Get errors
+                    _, fb = self.get_fluxes(A, f, f_err**2)
+                    
+                    # Add Gaussian prior on negative blend flux
+                    if fb < 0:
+                        # Allow small negative values but penalize large ones
+                        return -0.5 * (fb / self.sigma_fb)**2
                 return 0.0
-            else:  # Debug prints for failing conditions
-                # ... (your original debug prints for tE, q, s, rho)
+            else:
                 return -np.inf
 
     # MODIFIED: lnprob to use self.LOM_enabled
