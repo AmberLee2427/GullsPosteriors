@@ -70,6 +70,10 @@ def run_emcee(
             mp.set_start_method("fork")
         except RuntimeError:
             pass
+
+    # Set the current event for the prior
+    self.current_event = event_obj
+
     # The new arguments to be passed to the log probability function
     log_prob_args = [event_obj, truths, prange_linear, prange_log, normal]
 
@@ -220,6 +224,9 @@ def run_burnin(
         except RuntimeError:
             pass
 
+    # Set the current event for the prior
+    self.current_event = event_obj
+
     log_prob_args = [event_obj, truths, prange_linear, prange_log, normal]
 
     labels = labels if labels is not None else self.labels
@@ -241,7 +248,8 @@ def run_burnin(
 
     steps = 0
     no_expand = 0
-    expansion_threshold = 0.3
+    expansion_threshold = 0.2  # Lower threshold to be more sensitive
+    expansion_rate = 1.1  # More gradual expansion
 
     while steps < max_steps and no_expand < 2:
         state, _, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
@@ -260,8 +268,8 @@ def run_burnin(
             frac = np.mean((positions[:, idx] < 0.05) | (positions[:, idx] > 0.95))
             if frac > expansion_threshold:
                 old_range = prange_log[j]
-                prange_log[j] *= 1.2
-                p_unc[idx] *= 1.2
+                prange_log[j] *= expansion_rate
+                p_unc[idx] *= expansion_rate
                 new_range = prange_log[j]
                 center = truths[idx]
                 old_min = np.log10(center) - old_range / 2.0
@@ -274,8 +282,8 @@ def run_burnin(
             frac = np.mean((positions[:, idx] < 0.05) | (positions[:, idx] > 0.95))
             if frac > expansion_threshold:
                 old_range = prange_linear[j]
-                prange_linear[j] *= 1.2
-                p_unc[idx] *= 1.2
+                prange_linear[j] *= expansion_rate
+                p_unc[idx] *= expansion_rate
                 new_range = prange_linear[j]
                 center = truths[idx]
                 old_min = center - old_range / 2.0

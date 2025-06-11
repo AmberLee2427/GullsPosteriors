@@ -224,6 +224,9 @@ if __name__ == "__main__":
 
     # --- Main Event Loop ---
     for i in range(nevents):
+        # Clear current_event at the start of each event
+        fit_obj.current_event = None
+        
         data_obj = Data()
         event_name, truths, data = data_obj.new_event(path, sort)
 
