@@ -153,7 +153,6 @@ def run_burnin(
     nl,
     ndim,
     stepi,
-    max_steps,
     log_prob_function,
     state,
     event_obj,
@@ -162,10 +161,12 @@ def run_burnin(
     prange_log,
     p_unc,
     normal,
+    max_steps=1000,
     threads=1,
     event_name="",
     path="./",
     labels=None,
+    min_steps=500,
 ):
     """Run a short ``emcee`` burn-in phase expanding priors as needed.
 
@@ -183,8 +184,6 @@ def run_burnin(
         Number of model parameters.
     stepi : int
         Interval between sampler checkpoints.
-    max_steps : int
-        Maximum burn-in steps to run.
     log_prob_function : callable
         Function computing the log-probability.
     state : :class:`emcee.State`
@@ -201,6 +200,8 @@ def run_burnin(
         Array of parameter uncertainties to update.
     normal : bool
         If ``True``, use normal rather than uniform priors.
+    max_steps : int, optional
+        Maximum number of burn-in steps to run.
     threads : int, optional
         Number of worker processes.
     event_name : str, optional
@@ -209,6 +210,8 @@ def run_burnin(
         Directory where output is written.
     labels : list of str or None, optional
         Parameter labels.
+    min_steps : int, optional
+        Minimum number of steps to run.
 
     Returns
     -------
@@ -251,7 +254,7 @@ def run_burnin(
     expansion_threshold = 0.2  # Lower threshold to be more sensitive
     expansion_rate = 1.1  # More gradual expansion
 
-    while steps < max_steps and no_expand < 2:
+    while steps < max_steps and (no_expand < 2 or steps < min_steps):
         state, _, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
 
         np.save(path + f"posteriors/{event_name}_burnin_samples.npy", sampler.flatchain)
@@ -262,6 +265,8 @@ def run_burnin(
 
         # Update for emcee 3.x API
         positions = state
+
+        # Check if we need to expand the priors
         expanded = False
 
         for j, idx in enumerate(log_indices):

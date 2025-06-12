@@ -54,8 +54,9 @@ if __name__ == "__main__":
 
     # Number of steps to discard from the start of the chain when
     # constructing posterior diagnostic plots.
-    burnin_steps = 500
     burnin_max_steps = 1000
+    burnin_min_steps = 500  # Minimum number of burn-in steps required
+    burnin_stepi = 200
 
     if "-f" in sys.argv:
         plot_index = sys.argv.index("-f") + 1
@@ -580,8 +581,7 @@ if __name__ == "__main__":
         state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
             nl,
             ndim,
-            stepi,
-            burnin_max_steps,
+            burnin_stepi,
             fit_obj.lnprob_transform,
             initial_pos,
             event_fit,
@@ -590,10 +590,12 @@ if __name__ == "__main__":
             prange_log,
             p_unc,
             normal,
+            max_steps=burnin_max_steps,
             threads=threads,
             event_name=event_name,
             path=path,
             labels=labels,
+            min_steps=burnin_min_steps,
         )
 
         sampler = fit_obj.run_emcee(
