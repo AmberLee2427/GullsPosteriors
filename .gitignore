@@ -1,9 +1,3 @@
-# First, explicitly allow files in repsample
-!repsample/
-repsample/*
-!repsample/*.csv
-!repsample/*.det.lc
-
 # Then ignore everything else
 # Ignore log files
 *.log
@@ -14,10 +8,6 @@ log.*
 
 # Ignore NumPy files
 *.npy
-
-# Ignore LC files
-*.lc
-*.det.lcdata
 
 # Ignore Fisher matrix files
 *.det.fm.0
@@ -63,3 +53,5 @@ ZIPME/
 # Specifically ignore data folders
 sample-241113/
 trash/
+#FishVBM_Therr_m20/
+repsample/
