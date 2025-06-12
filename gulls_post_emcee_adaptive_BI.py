@@ -640,7 +640,7 @@ if __name__ == "__main__":
             pickle.dump(truths, f)
 
         if plot_post:
-            flat_chain_post = sampler.get_chain(discard=burnin_steps, flat=True)
+            flat_chain_post = sampler.get_chain(flat=True)
             samples_for_corner = fit_obj.prior_transform(
                 flat_chain_post,
                 truths["params"][:ndim],
