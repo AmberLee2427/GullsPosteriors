@@ -1,3 +1,10 @@
+# First, explicitly allow files in repsample
+!repsample/
+repsample/*
+!repsample/*.csv
+!repsample/*.det.lc
+
+# Then ignore everything else
 # Ignore log files
 *.log
 log.*
@@ -10,14 +17,13 @@ log.*
 
 # Ignore LC files
 *.lc
-*.lcdata
+*.det.lcdata
 
 # Ignore Fisher matrix files
 *.det.fm.0
 
-# Ignore text and CSV files
+# Ignore text files
 *.txt
-*.csv 
 
 # Ignore DS Store
 .DS_Store
@@ -53,3 +59,7 @@ Orbit/__pycache__/
 
 # Ignore ZIP folder
 ZIPME/
+
+# Specifically ignore data folders
+sample-241113/
+trash/
