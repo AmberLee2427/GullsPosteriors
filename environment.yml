@@ -16,4 +16,3 @@ dependencies:
   - pip
   - pip:
       - VBMicrolensing
-prefix: /opt/anaconda3/envs/GullsPosteriors
