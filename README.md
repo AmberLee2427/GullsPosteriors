@@ -58,3 +58,7 @@ Plots and posterior samples are saved in the working directory.
   nested sampling.
 - The included notebooks showcase references and diagnostic plots.
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
