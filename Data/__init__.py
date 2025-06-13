@@ -25,8 +25,51 @@ class Data:
         files ``emcee_run_list.txt`` and ``emcee_complete.txt`` in the
         specified directory.
         """
+        self.sim_time0 = None
+        self._load_prm_time_correction()
 
-        pass
+    def _load_prm_time_correction(self, data_path=None):
+        """Load time correction from prm file if it exists.
+        
+        Looks for a `.prm` file in the current directory and parent directories
+        up to 3 levels up. If found, uses `SIMULATION_ZERO_TIME` as the time correction.
+        """
+        if data_path is not None:
+            # Look in the same directory as the data file
+            data_dir = os.path.dirname(data_path)
+            for file in os.listdir(data_dir):
+                if file.endswith('.prm'):
+                    prm_path = os.path.join(data_dir, file)
+                    with open(prm_path, 'r') as f:
+                        for line in f:
+                            if line.startswith('SIMULATION_ZERO_TIME='):
+                                try:
+                                    self.sim_time0 = float(line.split('=')[1].strip())
+                                    print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
+                                    return
+                                except (ValueError, IndexError):
+                                    print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+        else:
+            # Look in current directory
+            current_dir = os.getcwd()
+            for file in os.listdir(current_dir):
+                if file.endswith('.prm'):
+                    prm_path = os.path.join(current_dir, file)
+                    print(f"\nFound .prm file in current directory: {prm_path}")
+                    response = input("Use this file for time correction? (y/n): ")
+                    if response.lower() != 'y':
+                        print("Skipping this .prm file")
+                        continue
+                        
+                    with open(prm_path, 'r') as f:
+                        for line in f:
+                            if line.startswith('SIMULATION_ZERO_TIME='):
+                                try:
+                                    self.sim_time0 = float(line.split('=')[1].strip())
+                                    print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
+                                    return
+                                except (ValueError, IndexError):
+                                    print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
 
     def new_event(self, path, sort="alphanumeric"):
         r"""Return the next lightcurve and its true parameters.
@@ -273,13 +316,17 @@ class Data:
         # The 'r' in sep=r'\s+' means raw string, which is not necessary.
         # Otherwise you get annoying warnings.
 
-        # simulation time to BJD
-        print(data["BJD"][0])
-        print(data["Simulation_time"][0])
-
-        self.sim_time0 = np.sum(data["BJD"] - data["Simulation_time"]) / len(
-            data["BJD"]
-        )
+        # Try to load prm file again if we don't have sim_time0
+        if self.sim_time0 is None:
+            self._load_prm_time_correction(data_file)
+            
+        # Only calculate from data if we still don't have sim_time0
+        if self.sim_time0 is None:
+            print("No prm file found, calculating time correction from data...")
+            self.sim_time0 = np.sum(data["BJD"] - data["Simulation_time"]) / len(
+                data["BJD"]
+            )
+            print(f"Calculated time correction: {self.sim_time0}")
 
         data = data[
             [
