@@ -1,10 +1,11 @@
-"""Data handling utilities for the microlensing challenge."""
+"""Data handling utilities for microlensing simulations."""
 
 import numpy as np
 import sys
 import os
 import pandas as pd
 import warnings
+import json
 
 
 class Data:
@@ -26,20 +27,72 @@ class Data:
         specified directory.
         """
         self.sim_time0 = None
+        self._data_path = None
+        self._config_file = None
+        self._config = None
         self._load_prm_time_correction()
 
-    def _load_prm_time_correction(self, data_path=None):
+    def _load_config(self, data_dir):
+        """Load or create config file for this data directory.
+        
+        Parameters
+        ----------
+        data_dir : str
+            Directory containing the data files.
+        """
+        self._config_file = os.path.join(data_dir, '.gulls_config.json')
+        
+        if os.path.exists(self._config_file):
+            with open(self._config_file, 'r') as f:
+                self._config = json.load(f)
+        else:
+            self._config = {
+                'master_file': None,
+                'prm_file': None
+            }
+
+    def _save_config(self):
+        """Save current config to file."""
+        if self._config_file is not None:
+            with open(self._config_file, 'w') as f:
+                json.dump(self._config, f, indent=4)
+
+    def _load_prm_time_correction(self, data_dir=None):
         """Load time correction from prm file if it exists.
         
         Looks for a `.prm` file in the current directory and parent directories
         up to 3 levels up. If found, uses `SIMULATION_ZERO_TIME` as the time correction.
         """
-        if data_path is not None:
-            # Look in the same directory as the data file
-            data_dir = os.path.dirname(data_path)
+        if data_dir is None:
+            data_dir = self._data_path
+
+        # First check if we have a saved prm file path
+        if self._config and self._config['prm_file'] and os.path.exists(self._config['prm_file']):
+            prm_path = self._config['prm_file']
+            with open(prm_path, 'r') as f:
+                for line in f:
+                    if line.startswith('SIMULATION_ZERO_TIME='):
+                        try:
+                            self.sim_time0 = float(line.split('=')[1].strip())
+                            print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
+                            return
+                        except (ValueError, IndexError):
+                            print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+        else:
+            # Look in data directory first
             for file in os.listdir(data_dir):
                 if file.endswith('.prm'):
                     prm_path = os.path.join(data_dir, file)
+                    print(f"\nFound .prm file in data directory: {prm_path}")
+                    response = input("Use this file for time correction? (y/n): ")
+                    if response.lower() != 'y':
+                        print("Skipping this .prm file")
+                        continue
+                    
+                    # Save the path if user confirms
+                    self._config['prm_file'] = prm_path
+                    self._save_config()
+                    
                     with open(prm_path, 'r') as f:
                         for line in f:
                             if line.startswith('SIMULATION_ZERO_TIME='):
@@ -49,8 +102,8 @@ class Data:
                                     return
                                 except (ValueError, IndexError):
                                     print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
-        else:
-            # Look in current directory
+
+            # Then look in current working directory
             current_dir = os.getcwd()
             for file in os.listdir(current_dir):
                 if file.endswith('.prm'):
@@ -60,7 +113,11 @@ class Data:
                     if response.lower() != 'y':
                         print("Skipping this .prm file")
                         continue
-                        
+                    
+                    # Save the path if user confirms
+                    self._config['prm_file'] = prm_path
+                    self._save_config()
+                    
                     with open(prm_path, 'r') as f:
                         for line in f:
                             if line.startswith('SIMULATION_ZERO_TIME='):
@@ -109,6 +166,8 @@ class Data:
         """
 
         files = os.listdir(path)
+        self._data_path = path
+        self._load_config(path)
         files = sorted(files)
 
         if path[-1] != "/":
@@ -126,9 +185,24 @@ class Data:
             complete_list = np.array([])
             np.savetxt(path + "emcee_complete.txt", complete_list, fmt="%s")
 
-        for file in files:
-            if "csv" in file:
-                master_file = path + file
+        # Check if we have a saved master file path
+        if self._config and self._config['master_file'] and os.path.exists(self._config['master_file']):
+            master_file = self._config['master_file']
+        else:
+            # Look for master file
+            for file in files:
+                if file.endswith(('.csv', '.out')):
+                    master_file = path + file
+                    print(f"\nFound master file: {master_file}")
+                    response = input("Use this file as master file? (y/n): ")
+                    if response.lower() != 'y':
+                        print("Skipping this master file")
+                        continue
+                    
+                    # Save the path if user confirms
+                    self._config['master_file'] = master_file
+                    self._save_config()
+                    break
 
         if sort == "alphanumeric":
 
@@ -318,7 +392,7 @@ class Data:
 
         # Try to load prm file again if we don't have sim_time0
         if self.sim_time0 is None:
-            self._load_prm_time_correction(data_file)
+            self._load_prm_time_correction()
             
         # Only calculate from data if we still don't have sim_time0
         if self.sim_time0 is None:
