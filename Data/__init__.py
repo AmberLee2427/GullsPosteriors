@@ -167,11 +167,16 @@ class Data:
 
     def load_data(self, data_file):
         r"""Load a Data Challenge lightcurve file.
+        The data array contains both measured and true values:
+        - The measured values (indices 1 and 2) are used for actual fitting
+        - The true values (indices 5 and 6) are used only for diagnostics and plotting
+        - The naming convention might be confusing, but the code correctly uses
+          the measured values and their uncertainties for the chi-square calculations
 
         Parameters
         ----------
         data_file : str
-            Path to the whitespace separated file containing the lightcurve.
+            Path to the lightcurve file to load.
 
         Returns
         -------
@@ -179,26 +184,36 @@ class Data:
             Keys are observatory codes and values are ``(N, 8)`` arrays for
             that observatory.
 
+        Dictionary mapping observatory codes to numpy arrays of shape (8, n_points)
+        containing the following data for each point:
+            [0] = "BJD" (time)
+            [1] = "measured_relative_flux" (the actual observed flux values used for fitting)
+            [2] = "measured_relative_flux_error" (the uncertainties used for fitting)
+            [3:5] = "parallax_shift_t", "parallax_shift_u" (parallax shift components)
+            [5] = "true_relative_flux" (the true underlying flux, used only for diagnostics)
+            [6] = "true_relative_flux_error" (the true uncertainties, used only for diagnostics)
+            [7] = "Simulation_time"
+
         Notes
         -----
         The lightcurve columns are:
-            [0] Simulation_time
-            [1] measured_relative_flux
-            [2] measured_relative_flux_error
-            [3] true_relative_flux
-            [4] true_relative_flux_error
-            [5] observatory_code
-            [6] saturation_flag
-            [7] best_single_lens_fit
-            [8] parallax_shift_t
-            [9] parallax_shift_u
-            [10] BJD
-            [11] source_x
-            [12] source_y
-            [13] lens1_x
-            [14] lens1_y
-            [15] lens2_x
-            [16] lens2_y
+            [0] "Simulation_time"
+            [1] "measured_relative_flux"
+            [2] "measured_relative_flux_error"
+            [3] "true_relative_flux"
+            [4] "true_relative_flux_error"
+            [5] "observatory_code"
+            [6] "saturation_flag"
+            [7] "best_single_lens_fit"
+            [8] "parallax_shift_t"
+            [9] "parallax_shift_u"
+            [10] "BJD"
+            [11] "source_x"
+            [12] "source_y"
+            [13] "lens1_x"
+            [14] "lens1_y"
+            [15] "lens2_x"
+            [16] "lens2_y"
 
         Magnitudes can be computed using:
 
@@ -250,9 +265,6 @@ class Data:
             "lens1_y",
             "lens2_x",
             "lens2_y",
-            "A",
-            "B",
-            "C",
         ]
 
         data = pd.read_csv(
