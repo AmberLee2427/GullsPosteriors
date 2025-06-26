@@ -27,6 +27,7 @@ class Data:
         specified directory.
         """
         self.sim_time0 = None
+        self.model_derivatives = None
         self._data_path = None
         self._config_file = None
         self._config = None
@@ -166,6 +167,7 @@ class Data:
         """
 
         files = os.listdir(path)
+        self.model_derivatives = None
         self._data_path = path
         self._load_config(path)
         files = sorted(files)
@@ -331,6 +333,13 @@ class Data:
             [14] "lens1_y"
             [15] "lens2_x"
             [16] "lens2_y"
+            [17] "X"                # observatory position (not in all datasets)
+            [18] "Y"
+            [19] "Z"
+            [20] "dTheta1"          # Fisher stuff (not in all datasets)
+            [21] "dTheta2"
+            [22] "dTheta3"
+            [23] ...
 
         Magnitudes can be computed using:
 
@@ -364,7 +373,8 @@ class Data:
         fit failed. Please let dev know if you find any of these events so that
         we can improve the single lens fitter."""
 
-        header = [
+        # Define the expected column names in order
+        expected_columns = [
             "Simulation_time",
             "measured_relative_flux",
             "measured_relative_flux_error",
@@ -382,7 +392,57 @@ class Data:
             "lens1_y",
             "lens2_x",
             "lens2_y",
+            "X",
+            "Y",
+            "Z",
+            "dTheta1",
+            "dTheta2",
+            "dTheta3",
+            "dTheta4",
+            "dTheta5",
+            "dTheta6",
+            "dTheta7",
+            "dTheta8",
+            "dTheta9",
+            "dTheta10",
+            "dTheta11",
+            "dTheta12",
+            "dTheta13",
+            "dTheta14",
+            "dTheta15"
         ]
+
+        # First, read the file to see how many columns it actually has
+        # Read just the first few lines to determine column count
+        with open(data_file, 'r') as f:
+            lines = []
+            for i, line in enumerate(f):
+                if i >= 15:  # Read a few lines after the header
+                    break
+                lines.append(line.strip())
+        
+        # Find the first data line (not starting with #)
+        data_line = None
+        for line in lines:
+            if not line.startswith('#'):
+                data_line = line
+                break
+        
+        if data_line is None:
+            raise ValueError(f"Could not find data line in {data_file}")
+        
+        # Count the actual number of columns in the data
+        actual_columns = len(data_line.split())
+        print(f"Detected {actual_columns} columns in {data_file}")
+        
+        # Use only the columns that exist in the file
+        header = expected_columns[:actual_columns]
+        
+        # If we have more columns than expected, add generic names
+        if actual_columns > len(expected_columns):
+            for i in range(len(expected_columns), actual_columns):
+                header.append(f"extra_col_{i}")
+            print(f"Warning: File has {actual_columns} columns, expected up to {len(expected_columns)}")
 
         data = pd.read_csv(
             data_file, sep=r"\s+", skiprows=12, names=header
@@ -402,34 +462,71 @@ class Data:
             )
             print(f"Calculated time correction: {self.sim_time0}")
 
-        data = data[
-            [
-                "BJD",
-                "measured_relative_flux",
-                "measured_relative_flux_error",
-                "parallax_shift_t",
-                "parallax_shift_u",
-                "observatory_code",
-                "true_relative_flux",
-                "true_relative_flux_error",
-                "Simulation_time",
-            ]
+        # Select only the columns we need for processing
+        required_columns = [
+            "BJD",
+            "measured_relative_flux",
+            "measured_relative_flux_error",
+            "parallax_shift_t",
+            "parallax_shift_u",
+            "observatory_code",
+            "true_relative_flux",
+            "true_relative_flux_error",
+            "Simulation_time",
         ]
+        
+        # Check which required columns are available
+        available_columns = [col for col in required_columns if col in data.columns]
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        
+        if missing_columns:
+            print(f"Warning: Missing columns in {data_file}: {missing_columns}")
+            # For missing columns, we'll need to handle this case
+            # For now, let's just use what we have
+            data = data[available_columns]
+        else:
+            data = data[required_columns]
+
+        # cov is any column name that starts with "dTheta"
+        col_names = [col for col in data.columns if col.startswith("dTheta")]
+        if len(col_names) > 0:  
+            self.model_derivatives = data[col_names].to_numpy()
+
+            # Form the data covariance matrix (diagonal matrix of flux uncertainties)
+            # We need to get the flux errors for all data points
+            flux_errors = data["measured_relative_flux_error"].values
+            self.data_covariance = np.diag(flux_errors**2)  # C = diag(σ²)
+            
+            # Calculate C^-1 (inverse of diagonal matrix is just 1/diagonal elements)
+            self.data_covariance_inv = np.diag(1.0 / flux_errors**2)  # C^-1 = diag(1/σ²)
+
+            # Calculate the Fisher matrix: F = ∇ᵀC⁻¹∇
+            # where ∇ is the matrix of model derivatives
+            n_params = len(col_names)
+            n_data = len(flux_errors)
+            self.fisher_matrix = np.zeros((n_params, n_params))
+            
+            # More efficient calculation using matrix operations
+            # F_ij = Σ_k (∂f_k/∂θ_i) * (1/σ_k²) * (∂f_k/∂θ_j)
+            for i in range(n_params):
+                for j in range(i, n_params):
+                    # Sum over all data points
+                    fisher_element = np.sum(
+                        self.model_derivatives[:, i] * 
+                        (1.0 / flux_errors**2) * 
+                        self.model_derivatives[:, j]
+                    )
+                    self.fisher_matrix[i, j] = fisher_element
+                    self.fisher_matrix[j, i] = fisher_element  # Symmetric matrix
+
+            # Calculate the inverse of the Fisher matrix
+            self.model_covariance = np.linalg.inv(self.fisher_matrix)
 
         data_dict = {}
         for code in data["observatory_code"].unique():
-            data_obs = data[data["observatory_code"] == code][
-                [
-                    "BJD",
-                    "measured_relative_flux",
-                    "measured_relative_flux_error",
-                    "parallax_shift_t",
-                    "parallax_shift_u",
-                    "true_relative_flux",
-                    "true_relative_flux_error",
-                    "Simulation_time",
-                ]
-            ].reset_index(drop=True)
+            # Select columns that are available for this observatory
+            available_obs_columns = [col for col in available_columns if col != "observatory_code"]
+            data_obs = data[data["observatory_code"] == code][available_obs_columns].reset_index(drop=True)
             data_dict[code] = data_obs.to_numpy().T
 
         return data_dict
