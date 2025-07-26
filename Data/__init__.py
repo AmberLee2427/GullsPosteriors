@@ -31,6 +31,10 @@ class Data:
         self._data_path = None
         self._config_file = None
         self._config = None
+        # Initialize _config before calling _load_prm_time_correction without data_dir
+        # Use a temporary path if _data_path is not yet set
+        temp_data_dir = os.getcwd() if self._data_path is None else self._data_path
+        self._load_config(temp_data_dir)
         self._load_prm_time_correction()
 
     def _load_config(self, data_dir):
@@ -49,7 +53,8 @@ class Data:
         else:
             self._config = {
                 'master_file': None,
-                'prm_file': None
+                'prm_file': None,
+                'prefix': None # Initialize prefix here too
             }
 
     def _save_config(self):
@@ -64,11 +69,14 @@ class Data:
         Looks for a `.prm` file in the current directory and parent directories
         up to 3 levels up. If found, uses `SIMULATION_ZERO_TIME` as the time correction.
         """
+        # Determine the directory to start searching from
         if data_dir is None:
-            data_dir = self._data_path
+            data_dir = self._data_path # Use _data_path if data_dir is not provided
+            if data_dir is None: # Fallback if _data_path is also None
+                data_dir = os.getcwd()
 
-        # First check if we have a saved prm file path
-        if self._config and self._config['prm_file'] and os.path.exists(self._config['prm_file']):
+        # First check if we have a saved prm file path in config and it exists
+        if self._config and self._config.get('prm_file') and os.path.exists(self._config['prm_file']):
             prm_path = self._config['prm_file']
             with open(prm_path, 'r') as f:
                 for line in f:
@@ -79,37 +87,19 @@ class Data:
                             return
                         except (ValueError, IndexError):
                             print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
-        else:
-            # Look in data directory first
-            for file in os.listdir(data_dir):
-                if file.endswith('.prm'):
-                    prm_path = os.path.join(data_dir, file)
-                    print(f"\nFound .prm file in data directory: {prm_path}")
-                    response = input("Use this file for time correction? (y/n): ")
-                    if response.lower() != 'y':
-                        print("Skipping this .prm file")
-                        continue
-                    
-                    # Save the path if user confirms
-                    self._config['prm_file'] = prm_path
-                    self._save_config()
-                    
-                    with open(prm_path, 'r') as f:
-                        for line in f:
-                            if line.startswith('SIMULATION_ZERO_TIME='):
-                                try:
-                                    self.sim_time0 = float(line.split('=')[1].strip())
-                                    print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
-                                    return
-                                except (ValueError, IndexError):
-                                    print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+        
+        # If not found in config or path invalid, look in data_dir and current_dir
+        # Loop through potential directories to find .prm file
+        search_dirs = [data_dir, os.getcwd()]
+        for current_search_dir in search_dirs:
+            # Ensure the directory exists before listing its contents
+            if not os.path.isdir(current_search_dir):
+                continue
 
-            # Then look in current working directory
-            current_dir = os.getcwd()
-            for file in os.listdir(current_dir):
-                if file.endswith('.prm'):
-                    prm_path = os.path.join(current_dir, file)
-                    print(f"\nFound .prm file in current directory: {prm_path}")
+            for file_name in os.listdir(current_search_dir):
+                if file_name.endswith('.prm'):
+                    prm_path = os.path.join(current_search_dir, file_name)
+                    print(f"\nFound .prm file in {current_search_dir}: {prm_path}")
                     response = input("Use this file for time correction? (y/n): ")
                     if response.lower() != 'y':
                         print("Skipping this .prm file")
@@ -128,6 +118,9 @@ class Data:
                                     return
                                 except (ValueError, IndexError):
                                     print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+        
+        print("No SIMULATION_ZERO_TIME loaded from .prm file.")
+
 
     def new_event(self, path, sort="alphanumeric"):
         r"""Return the next lightcurve and its true parameters.
@@ -148,38 +141,35 @@ class Data:
             ``(event_name, truths, data)`` where ``event_name`` is the event
             identifier, ``truths`` is a :class:`pandas.Series` with the event
             parameters and additional derived values, and ``data`` is the
-            dictionary returned by :meth:`load_data`.
+            dictionary returned by :meth:`load_data`. Returns ``(None, None, None)``
+            if no new event is found (graceful exit).
 
-        Notes
-        -----
-        The function maintains two files in ``path``:
-
-        ``emcee_run_list.txt``
-            Records lightcurve files that have been processed.  The file will
-            be created if it does not already exist and the selected file will
-            be appended to it.
-        ``emcee_complete.txt``
-            Created if missing.  The file is not modified by this routine but
-            is expected by later stages of the pipeline.
-
-        ``new_event`` modifies ``emcee_run_list.txt`` on every successful call
-        and therefore has file-system side effects.
+        Raises
+        ------
+        FileNotFoundError
+            If no master file is found or selected.
+            If no light curve files (.det.lc) are found in the directory.
+        KeyError
+            If 'lcname' or 'LCOutput' columns are missing in the master file.
+        ValueError
+            If master file naming convention is invalid.
         """
+        # Initialize return values to None
+        event_name, truths, data = None, None, None
 
         files = os.listdir(path)
         self.model_derivatives = None
         self._data_path = path
-        self._load_config(path)
+        self._load_config(path) # Load config specific to the data path
         files = sorted(files)
 
         if path[-1] != "/":
             path = path + "/"
 
-        if not os.path.exists(
-            path + "emcee_run_list.txt"
-        ):  # if the run list doesn't exist, create it
-            run_list = np.array([])
-            np.savetxt(path + "emcee_run_list.txt", run_list, fmt="%s")
+        run_list_file_path = path + "emcee_run_list.txt"
+        if not os.path.exists(run_list_file_path):
+            # Create an empty run list file if it doesn't exist
+            np.savetxt(run_list_file_path, np.array([]), fmt="%s")
 
         if not os.path.exists(
             path + "emcee_complete.txt"
@@ -188,59 +178,73 @@ class Data:
             np.savetxt(path + "emcee_complete.txt", complete_list, fmt="%s")
 
         # Check if we have a saved master file path
-        if self._config and self._config['master_file'] and os.path.exists(self._config['master_file']):
+        master_file = None # Initialize master_file
+        if self._config and self._config.get('master_file') and os.path.exists(self._config['master_file']):
             master_file = self._config['master_file']
         else:
             # Look for master file
-            for file in files:
-                if file.endswith(('.csv', '.out')):
-                    master_file = path + file
+            for f_name in files: # Use f_name to avoid conflict with 'file_lc' later
+                if f_name.endswith(('.csv', '.out')):
+                    master_file = path + f_name
                     print(f"\nFound master file: {master_file}")
                     response = input("Use this file as master file? (y/n): ")
                     if response.lower() != 'y':
                         print("Skipping this master file")
+                        master_file = None # Reset if skipped
                         continue
                     
                     # Save the path if user confirms
                     self._config['master_file'] = master_file
                     self._save_config()
                     break
+            if master_file is None:
+                raise FileNotFoundError("No master file found or selected in the specified path. Cannot proceed.")
+
+        # Filter for light curve files and check if any exist
+        lc_files_candidates = [f for f in files if "det.lc" in f]
+        if not lc_files_candidates:
+            raise FileNotFoundError(f"No light curve files (.det.lc) found in the directory: '{path}'. Cannot proceed.")
+
+        found_event_to_process = False # Flag to indicate if a new event was successfully processed
 
         if sort == "alphanumeric":
+            for f_lc_candidate in sorted(lc_files_candidates): # Iterate only over .det.lc files
+                # --- Robustly load run_list ---
+                current_run_list = []
+                if os.path.exists(run_list_file_path) and os.path.getsize(run_list_file_path) > 0:
+                    with open(run_list_file_path, 'r') as f:
+                        for line in f:
+                            stripped_line = line.strip()
+                            if stripped_line: # Only add non-empty lines
+                                current_run_list.append(stripped_line)
+                current_run_list = np.array(current_run_list, dtype=str) # Ensure it's a NumPy array of strings
+                # --- End robust load ---
 
-            for file in files:
+                # --- Debug prints ---
+                print(f"DEBUG: Current run_list: {current_run_list}")
+                print(f"DEBUG: Candidate file: {f_lc_candidate}")
+                print(f"DEBUG: Is candidate in run_list? {f_lc_candidate in current_run_list}")
+                # --- End debug prints ---
 
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    run_list = np.loadtxt(
-                        path + "emcee_run_list.txt", dtype=str
-                    )
+                if (f_lc_candidate not in current_run_list): # Check only if it's not in run_list
+                    print(f"Processing new event: {f_lc_candidate}")
+                    # Add to run_list immediately before processing
+                    new_run_list = np.hstack([current_run_list, f_lc_candidate])
+                    np.savetxt(run_list_file_path, new_run_list, fmt="%s")
 
-                if (file not in run_list) and ("det.lc" in file):
-
-                    print("Already ran:", run_list)
-                    run_list = np.hstack([run_list, file])
-                    print("Running:", file, type(file))
-                    np.savetxt(path + "emcee_run_list.txt", run_list, fmt="%s")
-
-                    lc_file_name = file.split(".")[0]
+                    lc_file_name = f_lc_candidate.split(".")[0]
                     event_identifiers = lc_file_name.split("_")
                     event_id = event_identifiers[-1]
-                    sub_run = event_identifiers[
-                        -3
-                    ]  # the order of these is fucked up
-                    field = event_identifiers[
-                        -2
-                    ]  # and this one. -A 2024-11-11 resample
+                    sub_run = event_identifiers[-3]
+                    field = event_identifiers[-2]
 
-                    data_file = path + file
+                    data_file = path + f_lc_candidate
 
                     data = self.load_data(
                         data_file
                     )  # bjd, flux, flux_err, tshift, ushift
 
                     event_name = f"{field}_{sub_run}_{event_id}"
-                    # print('event_name = ', event_name)
 
                     obs0_data = data[0].copy()
                     simt = obs0_data[7]
@@ -249,40 +253,34 @@ class Data:
                     truths = self.get_params(
                         master_file, event_id, sub_run, field, simt, bjd
                     )
-                    # turns all the degress to radians and sim time to bjd
-                    break
-
-        """if ".txt" in sort:
-            files = np.loadtxt(sort)
-            for i in range(len(files)):
-                if os.path.exists('runlist.npy'):
-                    runlist = np.loadtxt('runlist.npy')
+                    
+                    # --- Handle lcname mismatch: LOG and PROCEED ---
+                    if (f_lc_candidate != truths["lcname"]):
+                        print(f"WARNING: Light curve file name mismatch for event {event_name}:")
+                        print(f"  File: {f_lc_candidate}")
+                        print(f"  Truths 'lcname': {truths['lcname']}")
+                        if len(f_lc_candidate) != len(truths["lcname"]):
+                            print(f"  Length mismatch: {len(f_lc_candidate)} != {len(truths['lcname'])}")
+                        print("  Proceeding with processing despite mismatch.")
+                    else:
+                        print("Data file and true params 'lcname' match.")
+                    
+                    # If we reached here, it means we found a suitable f_lc_candidate
+                    # and successfully loaded its data and truths (even with mismatch).
+                    found_event_to_process = True
+                    break # Exit the for loop, we found our event.
+                # If f_lc_candidate is already in run_list, continue to next file
                 else:
-                    runlist = np.array([])
-                if files[i] not in runlist:
-                    runlist = np.vstack(files[i])
-                    np.savetxt('runlist.txt', runlist, fmt='%s')
-                    data = mm.MulensData(file_name='data/' + files[i])
-                    true_params = np.loadtxt(
-                        'true_params/' + files[i].split('.')[0] + '.txt'
-                    )
-                    break"""
+                    print(f"Skipping already processed event: {f_lc_candidate}")
+                    continue # Explicitly continue to next iteration if already run
 
-        print()
-        # This is fucking dumb, but the 'lcname's in the master file do not
-        # match the actual lc file names
-        if (
-            file == truths["lcname"]
-        ):  # check that the data file and true params match
-            print("Data file and true params 'lcname' match")
-            sys.exit()
-            # return event_name, truths, data
-        else:
-            print("Data file and true params 'lcname' do not match")
-            print(file, "!=", truths["lcname"])
-            if len(file) != len(truths["lcname"]):
-                print("length:", len(file), "!=\n", len(truths["lcname"]))
-            return event_name, truths, data
+        # After the loop, if no new event was found to process, return None, None, None
+        if not found_event_to_process:
+            print(f"All light curve files in '{path}' have already been processed or no new ones found.")
+            return None, None, None # Graceful exit
+
+        # If a new event was found, return its details
+        return event_name, truths, data
 
     def load_data(self, data_file):
         r"""Load a Data Challenge lightcurve file.
@@ -409,7 +407,9 @@ class Data:
             "dTheta12",
             "dTheta13",
             "dTheta14",
-            "dTheta15"
+            "dTheta15",
+            "dTheta16",
+            "dTheta17"
         ]
 
         # First, read the file to see how many columns it actually has
@@ -437,6 +437,7 @@ class Data:
         
         # Use only the columns that exist in the file
         header = expected_columns[:actual_columns]
+        print(f"Header: {header}")
         
         # If we have more columns than expected, add generic names
         if actual_columns > len(expected_columns):
@@ -450,9 +451,11 @@ class Data:
         # The 'r' in sep=r'\s+' means raw string, which is not necessary.
         # Otherwise you get annoying warnings.
 
+        print(f"Data columns: {data.columns}")
+
         # Try to load prm file again if we don't have sim_time0
         if self.sim_time0 is None:
-            self._load_prm_time_correction()
+            self._load_prm_time_correction(data_dir=os.path.dirname(data_file)) # Pass the directory of the data file
             
         # Only calculate from data if we still don't have sim_time0
         if self.sim_time0 is None:
@@ -480,15 +483,15 @@ class Data:
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
-            print(f"Warning: Missing columns in {data_file}: {missing_columns}")
-            # For missing columns, we'll need to handle this case
-            # For now, let's just use what we have
-            data = data[available_columns]
-        else:
-            data = data[required_columns]
+            # If crucial columns are missing, raise an error or handle gracefully
+            if "BJD" in missing_columns or "measured_relative_flux" in missing_columns or "measured_relative_flux_error" in missing_columns:
+                raise ValueError(f"Essential columns missing in {data_file}: {missing_columns}")
+            print(f"Warning: Non-essential columns missing in {data_file}: {missing_columns}")
+            data = data[available_columns] # Proceed with available columns
 
         # cov is any column name that starts with "dTheta"
         col_names = [col for col in data.columns if col.startswith("dTheta")]
+        print(f"Fisher columns: {col_names}")
         if len(col_names) > 0:  
             self.model_derivatives = data[col_names].to_numpy()
 
@@ -512,15 +515,26 @@ class Data:
                 for j in range(i, n_params):
                     # Sum over all data points
                     fisher_element = np.sum(
-                        self.model_derivatives[:, i] * 
-                        (1.0 / flux_errors**2) * 
-                        self.model_derivatives[:, j]
+                        self.model_derivatives[:, i] * (1.0 / flux_errors**2) * self.model_derivatives[:, j]
                     )
                     self.fisher_matrix[i, j] = fisher_element
                     self.fisher_matrix[j, i] = fisher_element  # Symmetric matrix
 
             # Calculate the inverse of the Fisher matrix
             self.model_covariance = np.linalg.inv(self.fisher_matrix)
+            # Calculate 1-sigma Fisher uncertainties for each parameter
+            self.model_parameter_uncertainties = np.sqrt(np.diag(self.model_covariance))
+
+            # --- DEBUG PRINTS FOR FISHER CALCULATIONS ---
+            print("\n--- Fisher Calculation Debug ---")
+            print(f"Fisher Matrix shape: {self.fisher_matrix.shape}")
+            print(f"Fisher Matrix (first 3x3): \n{self.fisher_matrix[:min(3, n_params),:min(3, n_params)]}") # Adjusted for smaller n_params
+            print(f"Model Covariance shape: {self.model_covariance.shape}")
+            print(f"Model Covariance (first 3x3): \n{self.model_covariance[:min(3, n_params),:min(3, n_params)]}") # Adjusted for smaller n_params
+            print(f"Model Parameter Uncertainties (1-sigma): \n{self.model_parameter_uncertainties}")
+            print("--- End Fisher Calculation Debug ---\n")
+
+        data = data[required_columns]
 
         data_dict = {}
         for code in data["observatory_code"].unique():
@@ -572,7 +586,8 @@ class Data:
         sub_run = int(sub_run)
         field = int(field)
 
-        master = pd.read_csv(master_file, header=0, delimiter=",")
+        # Robustly read master file with any whitespace or comma delimiter
+        master = pd.read_csv(master_file, header=0, sep=r'[,    \s]+', engine='python')
         # print(master.head())
 
         truths = master[
@@ -627,4 +642,72 @@ class Data:
 
         truths["tcroin"] = tcroin
 
+        # After reading the master file and extracting truths
+        # Use 'lcname' or 'LCOutput' as available
+        lcname_col = None
+        if 'lcname' in truths:
+            lcname_col = 'lcname'
+        elif 'LCOutput' in truths:
+            lcname_col = 'LCOutput'
+        else:
+            # If neither is found, it's a critical error for matching
+            raise KeyError("Neither 'lcname' nor 'LCOutput' found in master file for event.")
+
+        # Always set 'lcname' for downstream code, using the found column
+        # CRITICAL FIX: Revert to original logic for lcname construction based on unique values
+        def is_number(val):
+            try:
+                float(val)
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        if is_number(truths[lcname_col]) and float(truths[lcname_col]) in [0, 1]:
+            # Check if prefix is already in config file
+            if self._config.get('prefix') is not None: 
+                prefix = self._config['prefix']
+            else:
+                # Determine the naming convention
+                # Check if SubRun column has 1 unique value
+                if len(master['SubRun'].unique()) == 1:
+                    suffixA = "_" + str(int(master['SubRun'].unique()[0])) # Cast to int
+                else:
+                    suffixA = ""
+                # Check if Field column has 1 unique value
+                if len(master['Field'].unique()) == 1:
+                    suffixB = "_" + str(int(master['Field'].unique()[0])) # Cast to int
+                else:
+                    suffixB = ""
+
+                # Strip file extension from master_file
+                master_file_name = os.path.splitext(os.path.basename(master_file))[0]
+
+                # Determine the correct suffix order
+                if master_file_name.endswith(suffixA + suffixB):
+                    suffix = suffixA + suffixB
+                elif master_file_name.endswith(suffixB + suffixA):
+                    suffix = suffixB + suffixA
+                elif master_file_name.endswith(suffixA):
+                    suffix = suffixA
+                elif master_file_name.endswith(suffixB):
+                    suffix = suffixB
+                else:
+                    # If no clear suffix pattern matches, default to empty suffix
+                    # and let the prefix be the full master file name
+                    suffix = ""
+                    warnings.warn(f"Could not determine clear suffix pattern for master file: {master_file_name}. Using full name as prefix.")
+                
+                # get master_file prefix 
+                prefix = master_file_name[: -len(suffix)] if suffix else master_file_name
+
+                # save naming convention to config file
+                self._config['prefix'] =  prefix
+                self._save_config()
+
+            # Construct new lcname: <prefix>_<SubRun>_<Field>_<EventID>.det.lc
+            truths['lcname'] = f"{prefix}_{int(truths['SubRun'])}_{int(truths['Field'])}_{int(truths['EventID'])}.det.lc"
+        else:
+            # If lcname_col is not a number, assume it's already the correct filename string
+            truths['lcname'] = truths[lcname_col]
+        
         return truths

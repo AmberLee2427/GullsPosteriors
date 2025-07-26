@@ -433,7 +433,7 @@ class Event:
         t0 = p[5]  # time of event peak in BJD
         # t_start = self.sim_time0  # I shouldn't need this
         tE = p[6]  # Einstein crossing time/event timescale
-        t_ref = self.t_ref.copy()  # reference time for the parallax and LOM
+        t_ref = self.t_ref*1.0  # reference time for the parallax and LOM
         # tau_start = (t_start-t0)/tE
         # tcroin = self.truths['tcroin']
         u0 = p[3]  # impact parameter relative to L1

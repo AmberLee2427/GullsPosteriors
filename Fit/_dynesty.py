@@ -1,18 +1,14 @@
 # In Fit/_dynesty.py
 from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
-
-# from dynesty import sampling as dysample
-# Not used in the functions you provided
-# from dynesty import DynamicNestedSampler # Not used
-# from dynesty import NestedSampler # Not used
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import numpy as np
+from numpy import sqrt
 
 
 def prior_transform(
-    self, u, true_full, prange_linear, prange_log, normal=False
+    self, u, truths_array, prange_linear, prange_log, normal=False, fisher_uncertainties=None
 ):
     """Map unit-cube samples to physical parameters.
 
@@ -21,14 +17,27 @@ def prior_transform(
     u : array_like
         Samples from the unit hypercube with shape ``(nwalkers, ndim)`` or
         ``(ndim,)``.
-    true_full : array_like
-        Reference parameter values for the complete 12-parameter model.
+    truths_array : array_like
+        Reference parameter values for the complete 12-parameter model (as an array).
     prange_linear : array_like
         Linear prior widths for the current model parameters.
     prange_log : array_like
         Logarithmic prior widths for the current model parameters.
     normal : bool, optional
-        If ``True``, draw from normal rather than uniform distributions.
+        If ``True``, draw from normal rather than uniform distributions (in unit cube space, mean=0.5, sigma=0.25).
+    fisher_uncertainties : array_like or None, optional
+        1-sigma Fisher uncertainties for each parameter (in linear space for linear params, log space for log params).
+        If provided, the prior region is [truth-4σ, truth+4σ] (or log equivalent). The 2σ region maps to [0.25, 0.75] in the unit cube.
+        For normal, samples are drawn from N(0.5, 0.25) in the unit cube, then mapped.
+        If not provided, prange_log/prange_linear are used as before.
+
+    Notes
+    -----
+    For both uniform and normal priors:
+      - [0, 0.25, 0.5, 0.75, 1.0] in the unit cube maps to [truth-4σ, truth-2σ, truth, truth+2σ, truth+4σ] (linear), or log equivalents for log parameters.
+      - For normal, samples are drawn from N(0.5, 0.25) in the unit cube, then mapped as above.
+      - For log parameters, handle asymmetry if σ+ ≠ σ−.
+    No manual truncation is needed; the unit cube bounds do this.
 
     Returns
     -------
@@ -48,61 +57,48 @@ def prior_transform(
     else:
         log_param_names = log_param_names_base
 
-    # Get indices for log and linear params within the *current* model
-    # (9 or 12 params)
-    # These indices refer to positions within `u` and `theta`
     u_log_indices = [
         i for i, label in enumerate(current_labels) if label in log_param_names
     ]
     u_linear_indices = [
-        i
-        for i, label in enumerate(current_labels)
-        if label not in log_param_names
+        i for i, label in enumerate(current_labels) if label not in log_param_names
     ]
 
     # Get indices for log and linear params within the *full 12-param truth
     # array*
     full_labels_list = [
-        "s",
-        "q",
-        "rho",
-        "u0",
-        "alpha",
-        "t0",
-        "tE",
-        "piEE",
-        "piEN",
-        "i",
-        "phase",
-        "period",
+        "s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"
     ]
-    true_log_indices = [
-        full_labels_list.index(name) for name in log_param_names
-    ]
+    true_log_indices = [full_labels_list.index(name) for name in log_param_names]
+    current_linear_labels = [label for label in current_labels if label not in log_param_names]
+    true_linear_indices = [full_labels_list.index(name) for name in current_linear_labels]
 
-    # For linear params, we need to map current linear labels to their index in
-    # the full truth array
-    # First, get the names of the current linear parameters
-    current_linear_labels = [
-        label for label in current_labels if label not in log_param_names
-    ]
-    true_linear_indices = [
-        full_labels_list.index(name) for name in current_linear_labels
-    ]
-
-    # Slice the 'true_full' array (which is always 12 params)
-    true_log_values = np.asarray(true_full)[true_log_indices]
-    true_linear_values = np.asarray(true_full)[true_linear_indices]
+    true_log_values = truths_array[true_log_indices] # Use truths_array directly
+    true_linear_values = truths_array[true_linear_indices] # Use truths_array directly
 
     # --- Transform log parameters ---
-    # prange_log is already correctly sized
     if u.ndim == 1:  # Single sample
         for i, u_idx in enumerate(u_log_indices):
             true_val = true_log_values[i]
             prange_val = prange_log[i]
-            if normal:
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                log_true = np.log10(true_val)
+                # Ensure log_sigma is calculated correctly for positive/negative deviations
+                # For simplicity, assuming symmetric log_sigma based on (true_val + sigma)
+                # A more robust approach might consider log10(true_val - sigma) if applicable
+                log_sigma = np.log10(true_val + sigma) - log_true
+                if normal:
+                    loc = log_true
+                    scale = 4 * log_sigma # Scale for 4-sigma range in log space
+                    theta[u_idx] = 10 ** norm.ppf(u[u_idx], loc=loc, scale=scale)
+                else:
+                    min_log = log_true - 4 * log_sigma
+                    max_log = log_true + 4 * log_sigma
+                    theta[u_idx] = 10 ** (min_log + (max_log - min_log) * u[u_idx])
+            elif normal:
                 loc = np.log10(true_val)
-                scale = prange_val / 2.0
+                scale = prange_val / 2.0 # Scale for prange_val/2 width in log space
                 theta[u_idx] = 10 ** norm.ppf(u[u_idx], loc=loc, scale=scale)
             else:
                 min_log = np.log10(true_val) - prange_val / 2.0
@@ -112,7 +108,19 @@ def prior_transform(
         for i, u_idx in enumerate(u_log_indices):
             true_val = true_log_values[i]
             prange_val = prange_log[i]
-            if normal:
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
+                if normal:
+                    loc = log_true
+                    scale = 4 * log_sigma
+                    theta[:, u_idx] = 10 ** norm.ppf(u[:, u_idx], loc=loc, scale=scale)
+                else:
+                    min_log = log_true - 4 * log_sigma
+                    max_log = log_true + 4 * log_sigma
+                    theta[:, u_idx] = 10 ** (min_log + (max_log - min_log) * u[:, u_idx])
+            elif normal:
                 loc = np.log10(true_val)
                 scale = prange_val / 2.0
                 theta[:, u_idx] = 10 ** norm.ppf(
@@ -131,61 +139,282 @@ def prior_transform(
         for i, u_idx in enumerate(u_linear_indices):
             true_val = true_linear_values[i]
             prange_val = prange_linear[i]
-            if normal:
-                loc = true_val
-                scale = prange_val / 2.0
-                theta[u_idx] = norm.ppf(u[u_idx], loc=loc, scale=scale)
-            else:
+            label = current_linear_labels[i]
+            is_angle = label in ["alpha", "i", "phase"]
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                if is_angle and normal:
+                    # max_sigma is a safeguard to prevent too wide a distribution for angles
+                    # It ensures the 4-sigma range doesn't exceed 2*pi / 2 (i.e., pi)
+                    # This prevents extreme values that would wrap multiple times
+                    max_sigma = (np.pi - 1e-6) / 8 # This means 4*sigma_max = (np.pi - 1e-6)/2
+                    if sigma > max_sigma:
+                        sigma = max_sigma
+                if normal:
+                    if is_angle:
+                        # For angles, we sample a deviation from true_val
+                        # The prior is effectively a normal distribution centered at true_val
+                        # The scale is 4*sigma for Fisher, or prange_val/2 for non-Fisher
+                        theta[u_idx] = norm.ppf(u[u_idx], loc=true_val, scale=4 * sigma)
+                    else:
+                        loc = true_val
+                        scale = 4 * sigma
+                        theta[u_idx] = norm.ppf(u[u_idx], loc=loc, scale=scale)
+                else: # Uniform distribution with Fisher uncertainties
+                    min_linear = true_val - 4 * sigma
+                    max_linear = true_val + 4 * sigma
+                    theta[u_idx] = min_linear + (max_linear - min_linear) * u[u_idx]
+            elif normal:
+                if is_angle:
+                    theta[u_idx] = norm.ppf(u[u_idx], loc=true_val, scale=prange_val / 2.0)
+                else:
+                    loc = true_val
+                    scale = prange_val / 2.0
+                    theta[u_idx] = norm.ppf(u[u_idx], loc=loc, scale=scale)
+            else: # Uniform distribution without Fisher uncertainties
                 min_linear = true_val - prange_val / 2.0
                 max_linear = true_val + prange_val / 2.0
                 theta[u_idx] = (
                     min_linear + (max_linear - min_linear) * u[u_idx]
                 )
-    else:
+    else: # Multiple samples (walkers)
         for i, u_idx in enumerate(u_linear_indices):
             true_val = true_linear_values[i]
             prange_val = prange_linear[i]
-            if normal:
-                loc = true_val
-                scale = prange_val / 2.0
-                theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=loc, scale=scale)
-            else:
+            label = current_linear_labels[i]
+            is_angle = label in ["alpha", "i", "phase"]
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                if is_angle and normal:
+                    max_sigma = (np.pi - 1e-6) / 8
+                    if sigma > max_sigma:
+                        sigma = max_sigma
+                if normal:
+                    if is_angle:
+                        theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=true_val, scale=4 * sigma)
+                    else:
+                        loc = true_val
+                        scale = 4 * sigma
+                        theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=loc, scale=scale)
+                else: # Uniform distribution with Fisher uncertainties
+                    min_linear = true_val - 4 * sigma
+                    max_linear = true_val + 4 * sigma
+                    theta[:, u_idx] = min_linear + (max_linear - min_linear) * u[:, u_idx]
+            elif normal:
+                if is_angle:
+                    theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=true_val, scale=prange_val / 2.0)
+                else:
+                    loc = true_val
+                    scale = prange_val / 2.0
+                    theta[:, u_idx] = norm.ppf(u[:, u_idx], loc=loc, scale=scale)
+            else: # Uniform distribution without Fisher uncertainties
                 min_linear = true_val - prange_val / 2.0
                 max_linear = true_val + prange_val / 2.0
                 theta[:, u_idx] = (
                     min_linear + (max_linear - min_linear) * u[:, u_idx]
                 )
 
-    # Angle wrapping based on current labels
-    param_to_theta_idx = {label: i for i, label in enumerate(current_labels)}
-
-    if "alpha" in param_to_theta_idx:
-        alpha_idx = param_to_theta_idx["alpha"]
-        if u.ndim == 1:
-            theta[alpha_idx] %= 2 * np.pi
-        else:
-            theta[:, alpha_idx] %= 2 * np.pi
-
-    if self.LOM_enabled:
-        if "i" in param_to_theta_idx:  # Inclination
-            i_idx = param_to_theta_idx["i"]
-            # Decide if 'i' should be 0-pi or 0-2pi. Typically 0-pi.
-    # If 0-pi, use something like:
-    # val = val % (2*np.pi)
-    # if val > np.pi:
-    #     val -= np.pi
-            if u.ndim == 1:
-                theta[i_idx] %= 2 * np.pi
-            else:
-                theta[:, i_idx] %= 2 * np.pi
-        if "phase" in param_to_theta_idx:
-            phase_idx = param_to_theta_idx["phase"]
-            if u.ndim == 1:
-                theta[phase_idx] %= 2 * np.pi
-            else:
-                theta[:, phase_idx] %= 2 * np.pi
-
     return theta
+
+def detransform_theta(self, theta, truths_array, prange_linear, prange_log, normal=False, fisher_uncertainties=None):
+    """Map physical parameters to unit-cube samples.
+
+    Parameters
+    ----------
+    theta : array_like
+        Array of transformed parameters with the same shape as ``u``.
+    truths_array : array_like
+        Reference ("truth") parameter values for the complete 12-parameter model (as an array).
+    prange_linear : array_like
+        Linear prior widths for the current model parameters.
+    prange_log : array_like
+        Logarithmic prior widths for the current model parameters.
+    normal : bool, optional
+        If ``True``, draw from normal rather than uniform distributions (in unit cube space, mean=0.5, sigma=0.25).
+    fisher_uncertainties : array_like or None, optional
+        1-sigma Fisher uncertainties for each parameter (in linear space for linear params, log space for log params).
+        If provided, the prior region is [truth-2σ, truth+2σ] (or log equivalent). The 1σ region maps to [0.25, 0.75] in the unit cube.
+        For normal, samples are drawn from N(0.5, 0.25) in the unit cube, then mapped.
+    
+    Returns
+    -------
+    u : array_like
+        Unit-cube samples with the same shape as ``theta``.
+    """
+    u = np.zeros_like(theta)
+
+    # Use the labels stored in the Fit object to determine the current
+    # parameter set
+    current_labels = self.labels
+
+    # Define which parameter names are log-transformed
+    log_param_names_base = ["s", "q", "rho"]
+
+    # Complete the log_param_names logic
+    if self.LOM_enabled:
+        log_param_names = log_param_names_base + ["period"]
+    else:
+        log_param_names = log_param_names_base
+
+    u_log_indices = [
+        i for i, label in enumerate(current_labels) if label in log_param_names
+    ]
+    u_linear_indices = [
+        i for i, label in enumerate(current_labels) if label not in log_param_names
+    ]
+
+    # Get indices for log and linear params within the *full 12-param truth array*
+    full_labels_list = [
+        "s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"
+    ]
+    true_log_indices = [full_labels_list.index(name) for name in log_param_names]
+    current_linear_labels = [label for label in current_labels if label not in log_param_names]
+    true_linear_indices = [full_labels_list.index(name) for name in current_linear_labels]
+
+    true_log_values = truths_array[true_log_indices] # Use truths_array directly
+    true_linear_values = truths_array[true_linear_indices] # Use truths_array directly
+
+    # --- Invert log parameters ---
+    if theta.ndim == 1:  # Single sample
+        for i, u_idx in enumerate(u_log_indices):
+            true_val = true_log_values[i]
+            prange_val = prange_log[i]
+            log_theta = np.log10(theta[u_idx])
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
+                if normal:
+                    loc = log_true
+                    scale = 4 * log_sigma
+                    u[u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
+                else:
+                    min_log = log_true - 4 * log_sigma
+                    max_log = log_true + 4 * log_sigma
+                    u[u_idx] = (log_theta - min_log) / (max_log - min_log)
+            elif normal:
+                loc = np.log10(true_val)
+                scale = prange_val / 2.0
+                u[u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
+            else:
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                u[u_idx] = (log_theta - min_log) / (max_log - min_log)
+    else:  # Multiple samples (walkers)
+        for i, u_idx in enumerate(u_log_indices):
+            true_val = true_log_values[i]
+            prange_val = prange_log[i]
+            log_theta = np.log10(theta[:, u_idx])
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
+                if normal:
+                    loc = log_true
+                    scale = 4 * log_sigma
+                    u[:, u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
+                else:
+                    min_log = log_true - 4 * log_sigma
+                    max_log = log_true + 4 * log_sigma
+                    u[:, u_idx] = (log_theta - min_log) / (max_log - min_log)
+            elif normal:
+                loc = np.log10(true_val)
+                scale = prange_val / 2.0
+                u[:, u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
+            else:
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                u[:, u_idx] = (log_theta - min_log) / (max_log - min_log)
+
+    # --- Invert linear parameters ---
+    def angle_diff(a, b):
+        """Calculates the shortest angular difference between two angles."""
+        return (a - b + np.pi) % (2 * np.pi) - np.pi
+
+    if theta.ndim == 1:
+        for i, u_idx in enumerate(u_linear_indices):
+            true_val = true_linear_values[i]
+            prange_val = prange_linear[i]
+            theta_val = theta[u_idx]
+            label = current_linear_labels[i]
+            is_angle = label in ["alpha", "i", "phase"]
+
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                if is_angle and normal:
+                    max_sigma = (np.pi - 1e-6) / 8
+                    if sigma > max_sigma:
+                        sigma = max_sigma
+                    u_val = norm.cdf(theta_val, loc=true_val, scale=4 * sigma)
+                elif normal: # Non-angle, normal with Fisher
+                    loc = true_val
+                    scale = 4 * sigma
+                    u_val = norm.cdf(theta_val, loc=loc, scale=scale)
+                else: # Uniform distribution with Fisher uncertainties
+                    min_linear = true_val - 4 * sigma
+                    max_linear = true_val + 4 * sigma
+                    u_val = (theta_val - min_linear) / (max_linear - min_linear)
+            elif normal: # Normal distribution without Fisher uncertainties
+                if is_angle:
+                    delta = angle_diff(theta_val, true_val)
+                    u_val = norm.cdf(delta, loc=0.0, scale=prange_val / 2.0)
+                else:
+                    loc = true_val
+                    scale = prange_val / 2.0
+                    u_val = norm.cdf(theta_val, loc=loc, scale=scale)
+            else: # Uniform distribution without Fisher uncertainties
+                if is_angle:
+                    min_linear = true_val - prange_val / 2.0
+                    max_linear = true_val + prange_val / 2.0
+                    u_val = (angle_diff(theta_val, true_val) + prange_val / 2.0) / prange_val
+                else:
+                    min_linear = true_val - prange_val / 2.0
+                    max_linear = true_val + prange_val / 2.0
+                    u_val = (theta_val - min_linear) / (max_linear - min_linear)
+            u[u_idx] = u_val
+    else: # Multiple samples (walkers)
+        for i, u_idx in enumerate(u_linear_indices):
+            true_val = true_linear_values[i]
+            prange_val = prange_linear[i]
+            theta_val = theta[:, u_idx]
+            label = current_linear_labels[i]
+            is_angle = label in ["alpha", "i", "phase"]
+
+            if fisher_uncertainties is not None:
+                sigma = fisher_uncertainties[u_idx]
+                if is_angle and normal:
+                    max_sigma = (np.pi - 1e-6) / 8
+                    if sigma > max_sigma:
+                        sigma = max_sigma
+                    u_val = norm.cdf(theta_val, loc=true_val, scale=4 * sigma)
+                elif normal: # Non-angle, normal with Fisher
+                    loc = true_val
+                    scale = 4 * sigma
+                    u_val = norm.cdf(theta_val, loc=loc, scale=scale)
+                else: # Uniform distribution with Fisher uncertainties
+                    min_linear = true_val - 4 * sigma
+                    max_linear = true_val + 4 * sigma
+                    u_val = (theta_val - min_linear) / (max_linear - min_linear)
+            elif normal: # Normal distribution without Fisher uncertainties
+                if is_angle:
+                    delta = angle_diff(theta_val, true_val)
+                    u_val = norm.cdf(delta, loc=0.0, scale=prange_val / 2.0)
+                else:
+                    loc = true_val
+                    scale = prange_val / 2.0
+                    u_val = norm.cdf(theta_val, loc=loc, scale=scale)
+            else: # Uniform distribution without Fisher uncertainties
+                if is_angle:
+                    min_linear = true_val - prange_val / 2.0
+                    max_linear = true_val + prange_val / 2.0
+                    u_val = (angle_diff(theta_val, true_val) + prange_val / 2.0) / prange_val
+                else:
+                    min_linear = true_val - prange_val / 2.0
+                    max_linear = true_val + prange_val / 2.0
+                    u_val = (theta_val - min_linear) / (max_linear - min_linear)
+            u[:, u_idx] = u_val
+
+    return u
 
 
 def runplot(self, res, event_name, path):

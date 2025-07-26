@@ -51,7 +51,7 @@ class Fit:
 
     # prior_transform will now be fully defined in _dynesty.py
     # runplot and traceplot are also in _dynesty.py
-    from ._dynesty import prior_transform, runplot, traceplot
+    from ._dynesty import prior_transform, runplot, traceplot, detransform_theta
 
     # MODIFIED __init__ to accept and store ndim and labels
     def __init__(
