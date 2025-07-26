@@ -626,7 +626,10 @@ if __name__ == "__main__":
                 prange_log,
                 normal=True,
             )
-            fit_obj.corner_post(samples_for_corner, event_name, path, truths)
+            fisher_cov = getattr(data_obj, 'model_covariance', None)
+            fisher_unc = getattr(data_obj, 'model_parameter_uncertainties', None)
+            log_param_names = ["s", "q", "rho", "period"] if LOM_enabled else ["s", "q", "rho"]
+            fit_obj.corner_post(samples_for_corner, event_name, path, truths, fisher_covariance=fisher_cov, fisher_uncertainties=fisher_unc, log_param_names=log_param_names)
         if plot_trace:
             # Assuming traceplot exists
             fit_obj.traceplot(sampler, event_name, path, truths)

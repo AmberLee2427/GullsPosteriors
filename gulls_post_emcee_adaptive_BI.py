@@ -1,17 +1,7 @@
 """Command line interface to run posterior sampling on gull events, using 
 emcee, with adaptive burnin."""
 
-# import multiprocessing
-# multiprocessing.set_start_method('fork', force=True)
 import warnings
-
-# warnings.filterwarnings(
-#    "ignore",
-#    message=(
-#        "resource_tracker: There appear to be .* leaked semaphore objects"
-#    ),
-# )
-
 import os
 import sys
 import numpy as np
@@ -42,7 +32,7 @@ if __name__ == "__main__":
             threads = mp.cpu_count()
     else:
         threads = 1
-        pooling = False
+        # pooling = False # This variable is not used, can be removed.
 
     # --- Plotting Defaults ---
     plot_chain = True if sampling_package == "emcee" else False
@@ -76,7 +66,7 @@ if __name__ == "__main__":
             plot_chain = True
         else:
             plot_chain = False
-        if "t" in plot_options:
+        if "t" in plot_options: # Corrected: this should be plot_options, not sys.argv
             plot_trace = True
         else:
             plot_trace = False
@@ -110,6 +100,15 @@ if __name__ == "__main__":
     else:
         LOM_enabled = True
         print("Lens Orbit Motion (LOM) is ENABLED.")
+
+    # --- New: Fisher Prior Flag ---
+    if "-fp" in sys.argv:
+        use_fisher_prior = True
+        #print("Using Fisher uncertainties to inform prior ranges.")
+        sys.exit('Fisher informed prior ranges not currently supported.')
+    else:
+        use_fisher_prior = False
+        print("NOT using Fisher uncertainties to inform prior ranges (using prange_linear/log).")
 
     # ==================================================================
     # CONDITIONAL PARAMETER AND PRIOR SETUP MOVED HERE (OUTSIDE THE LOOP)
@@ -207,7 +206,6 @@ if __name__ == "__main__":
     from Event import Event
     from Fit import Fit
     from Orbit import Orbit
-    from Fit._dynesty import prior_transform
     from VBMicrolensing import VBMicrolensing
 
     # --- Initializations ---
@@ -230,11 +228,42 @@ if __name__ == "__main__":
         fit_obj.current_event = None
         
         data_obj = Data()
-        event_name, truths, data = data_obj.new_event(path, sort)
+        # --- CRITICAL CHANGE: Check for None return from new_event ---
+        event_name, truths_series, data = data_obj.new_event(path, sort) # Renamed to truths_series
+        if event_name is None: # If new_event returns None, None, None, it means no new event was found.
+            print(f"No more new events to process after {i} events. Exiting loop gracefully.")
+            break # Exit the loop gracefully
+
+        # Convert the pandas Series to a plain Python dictionary for multiprocessing safety
+        truths = truths_series.to_dict() # Convert to dict here
+        # CRITICAL FIX: Ensure 'params' is a NumPy array for consistent indexing
+        if 'params' in truths and isinstance(truths['params'], list):
+            truths['params'] = np.array(truths['params'])
+
 
         print(f"\n\n\n\n\n\nevent_name = {event_name}")
         print("---------------------------------------")
         print("truths = ", truths)
+
+        # Fisher uncertainties
+        #--------------------------------
+        fit_obj.fisher_uncertainties_for_prior = None  # should always be none in this script
+        fit_obj.fisher_uncertainties_for_plotting = None  # should always end up not None is Fisher data is present
+        fit_obj.fisher_covariance_for_plotting = None
+        # use fisher uncertainties to define the prior
+        if use_fisher_prior and data_obj.model_parameter_uncertainties is not None:
+            fit_obj.fisher_uncertainties_for_prior = data_obj.model_parameter_uncertainties
+            fit_obj.fisher_uncertainties_for_plotting = data_obj.model_parameter_uncertainties
+            fit_obj.fisher_covariance_for_plotting = data_obj.model_covariance
+            print("\nUsing Fisher uncertainties for prior:")
+            print(fit_obj.fisher_uncertainties_for_prior)
+        # do not use fisher uncertainties to define the prior
+        if not use_fisher_prior and data_obj.model_parameter_uncertainties is not None:
+            fit_obj.fisher_covariance_for_plotting = data_obj.model_covariance
+            fit_obj.fisher_uncertainties_for_plotting = data_obj.model_parameter_uncertainties
+            print("\nUsing Fisher uncertainties for plotting:")
+            print(fit_obj.fisher_uncertainties_for_plotting)
+        print()
 
         # Repackage data
         piE = np.array([truths["piEN"], truths["piEE"]])
@@ -263,7 +292,7 @@ if __name__ == "__main__":
             parallax_obj,
             orbit_obj,
             data,
-            truths,
+            truths, # Pass the truths dictionary
             data_obj.sim_time0,
             truths["t0lens1"],
             LOM_enabled=LOM_enabled,
@@ -272,7 +301,7 @@ if __name__ == "__main__":
             parallax_obj,
             orbit_obj,
             data,
-            truths,
+            truths, # Pass the truths dictionary
             data_obj.sim_time0,
             truths["tcroin"],
             LOM_enabled=LOM_enabled,
@@ -288,7 +317,7 @@ if __name__ == "__main__":
             parallax_obj,
             orbit_obj,
             data,
-            truths,
+            truths, # Pass the truths dictionary
             data_obj.sim_time0,
             tc_calc,
             LOM_enabled=LOM_enabled,
@@ -441,7 +470,6 @@ if __name__ == "__main__":
                 # Caustic Plot
                 plt.figure()
                 
-                # THIS IS THE LINE YOU BROKE. PUT THE ARGUMENTS BACK.
                 s_tc, _, _ = event_tc.projected_separation(
                     truths["params"][9],
                     truths["params"][11],
@@ -479,8 +507,6 @@ if __name__ == "__main__":
                     zorder=0,
                 )
                 
-                # This part plots the trajectory itself.
-                # I'm using the simple fix from last time.
                 plt.plot(
                     event_tc.traj_parallax_dalpha_u1[0],
                     event_tc.traj_parallax_dalpha_u2[0],
@@ -539,7 +565,7 @@ if __name__ == "__main__":
         # ==================================================================
         print("\nSampling Posterior using emcee")
         print("--------------------------------")
-        normal = True
+        normal = True # This flag controls if priors are normal or uniform *in physical space*
         nl, mi, stepi = 200, 2000, 100
         initial_pos = np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(
             nl, ndim
@@ -572,7 +598,7 @@ if __name__ == "__main__":
             parallax_obj,
             orbit_obj,
             data_cropped,
-            truths,
+            truths, # Pass the truths dictionary
             data_obj.sim_time0,
             fit_tref,
             LOM_enabled=LOM_enabled,
@@ -585,17 +611,18 @@ if __name__ == "__main__":
             fit_obj.lnprob_transform,
             initial_pos,
             event_fit,
-            truths["params"],
+            truths, # Pass the truths dictionary
             prange_linear,
             prange_log,
-            p_unc,
+            p_unc, # This is the adaptive prior width array
             normal,
             max_steps=burnin_max_steps,
             threads=threads,
             event_name=event_name,
             path=path,
             labels=labels,
-            min_steps=burnin_min_steps,
+            min_steps=burnin_min_steps, # Pass min_steps
+            fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting
         )
 
         sampler = fit_obj.run_emcee(
@@ -606,7 +633,7 @@ if __name__ == "__main__":
             fit_obj.lnprob_transform,
             state,
             event_fit,
-            truths["params"],
+            truths, # Pass the truths dictionary
             prange_linear,
             prange_log,
             normal,
@@ -614,6 +641,8 @@ if __name__ == "__main__":
             event_name=event_name,
             path=path,
             labels=labels,
+            fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
+            fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior #should be none
         )
 
         end_sampler = time.time()
@@ -623,12 +652,14 @@ if __name__ == "__main__":
         # SAVE RESULTS AND MAKE FINAL PLOTS
         # ==================================================================
         flat_chain = sampler.get_chain(flat=True)
+        # Note: prior_transform takes truths_array, not truths dictionary
         samples_phys = fit_obj.prior_transform(
             flat_chain,
-            truths["params"][:ndim],
+            truths["params"][:ndim], # Pass the array of truth values
             prange_linear,
             prange_log,
-            normal=True,
+            normal=normal, # Use the 'normal' flag from the sampling run
+            fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
         )
         np.save(
             path + "posteriors/" + event_name + "_post_samples.npy",
@@ -643,12 +674,23 @@ if __name__ == "__main__":
             flat_chain_post = sampler.get_chain(flat=True)
             samples_for_corner = fit_obj.prior_transform(
                 flat_chain_post,
-                truths["params"][:ndim],
+                truths["params"][:ndim], # Pass the array of truth values
                 prange_linear,
                 prange_log,
-                normal=True,
+                normal=normal, # Use the 'normal' flag from the sampling run
+                fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
             )
-            fit_obj.corner_post(samples_for_corner, event_name, path, truths)
+            # Use the stored fisher_covariance and fisher_uncertainties for plotting
+            log_param_names = ["s", "q", "rho", "period"] if LOM_enabled else ["s", "q", "rho"]
+            fit_obj.corner_post(
+                samples_for_corner, 
+                event_name, 
+                path, 
+                truths, 
+                fisher_covariance=fit_obj.fisher_covariance_for_plotting, 
+                fisher_uncertainties=fit_obj.fisher_uncertainties_for_plotting, 
+                log_param_names=log_param_names
+            )
         if plot_trace:
             # Assuming traceplot exists
             fit_obj.traceplot(sampler, event_name, path, truths)
@@ -676,15 +718,10 @@ if __name__ == "__main__":
 
             fs_ref, fb_ref = {}, {}
             for obs in event_fit.data.keys():
-                # OLD PROBLEMATIC LINE:
-                # t_obs, f_obs, ferr_obs = event_fit.data[obs]
-
-                # CORRECTED UNPACKING:
                 current_data_array = event_fit.data[obs]
                 t_obs = current_data_array[0, :]
                 f_obs = current_data_array[1, :]
                 ferr_obs = current_data_array[2, :]
-                # END CORRECTION
 
                 A_ref = event_fit.get_magnification(t_obs, obs)
                 fs_ref[obs], fb_ref[obs] = fit_obj.get_fluxes(
