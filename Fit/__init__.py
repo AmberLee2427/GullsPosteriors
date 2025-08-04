@@ -51,7 +51,7 @@ class Fit:
 
     # prior_transform will now be fully defined in _dynesty.py
     # runplot and traceplot are also in _dynesty.py
-    from ._dynesty import prior_transform, runplot, traceplot, detransform_theta
+    from ._dynesty import prior_transform, runplot, traceplot, detransform_theta, run_dynesty
 
     # MODIFIED __init__ to accept and store ndim and labels
     def __init__(
@@ -176,7 +176,7 @@ class Fit:
 
         return FS, FB
 
-    def get_chi2(self, event, params):
+    def get_chi2(self, event, params, measured_flux=True):
         """Compute the chi-square values for a given parameter set.
 
         Parameters
@@ -211,8 +211,12 @@ class Fit:
 
         for obs in event.data.keys():  # looping through observatories
             t = event.data[obs][0]  # BJD
-            f = event.data[obs][1]  # obs_rel_flux
-            f_err = event.data[obs][2]  # obs_rel_flux_err
+            if measured_flux:
+                f = event.data[obs][1]  # obs_rel_flux
+                f_err = event.data[obs][2]  # obs_rel_flux_err
+            else:
+                f = event.data[obs][5]  # true_rel_flux
+                f_err = event.data[obs][6]  # true_rel_flux_err
 
             A = event.get_magnification(t, obs)
             fs, fb = self.get_fluxes(A, f, f_err**2)

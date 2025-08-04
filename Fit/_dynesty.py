@@ -1,11 +1,13 @@
 # In Fit/_dynesty.py
+import dynesty
 from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import numpy as np
 from numpy import sqrt
-
+import multiprocessing as mp
+import pickle
 
 def prior_transform(
     self, u, truths_array, prange_linear, prange_log, normal=False, fisher_uncertainties=None
@@ -51,7 +53,7 @@ def prior_transform(
     current_labels = self.labels
 
     # Define which parameter names are log-transformed
-    log_param_names_base = ["s", "q", "rho"]
+    log_param_names_base = ["s", "q", "rho", "tE"]
     if self.LOM_enabled:
         log_param_names = log_param_names_base + ["period"]
     else:
@@ -248,7 +250,7 @@ def detransform_theta(self, theta, truths_array, prange_linear, prange_log, norm
     current_labels = self.labels
 
     # Define which parameter names are log-transformed
-    log_param_names_base = ["s", "q", "rho"]
+    log_param_names_base = ["s", "q", "rho", "tE"]
 
     # Complete the log_param_names logic
     if self.LOM_enabled:
@@ -490,3 +492,74 @@ def traceplot(self, res, event_name, path, truths):
     )  # Use suptitle for overall plot title with traceplot
     fig.savefig(path + "posteriors/" + event_name + "_traceplot.png")
     plt.close(fig)
+
+
+def run_dynesty(self, event, event_name, ndim, path, truths, prange_linear, prange_log, normal, fisher_uncertainties_for_prior=None):
+    """Run Dynesty for the given event.
+
+    Parameters
+    ----------
+    event : Event
+        The event to run Dynesty for.
+    event_name : str
+        The name of the event.
+    ndim : int
+        The number of dimensions of the parameter space.
+    path : str
+        The path to save the sampler to.
+    truths : dict
+        The true parameter values.
+    prange_linear : array_like
+        Linear prior widths for the current model parameters.
+    prange_log : array_like
+        Logarithmic prior widths for the current model parameters.
+    normal : bool
+        If True, use normal priors instead of uniform.
+    fisher_uncertainties_for_prior : array_like or None, optional
+        1-sigma Fisher uncertainties for each parameter.
+    
+    Returns
+    -------
+    sampler : dynesty.DynamicNestedSampler
+        The sampler.
+    """
+    # Set current event for the likelihood
+    self.current_event = event
+    
+    # Combine prange_linear and prange_log like in old code
+    # For old code compatibility, create single prange array
+    prange = np.concatenate([prange_log, prange_linear])
+    
+    sampler = dynesty.DynamicNestedSampler(
+        self.lnprob,  # Use lnprob directly, not lnprob_transform
+        self.prior_transform, 
+        ndim, 
+        nlive=100,  # Reduced from 200
+        sample='rwalk', 
+        bound='multi',
+        logl_args=[event],  # Pass event as argument to lnprob
+        ptform_args=[truths["params"][:ndim], prange_linear, prange_log],  # Pass args to prior_transform
+        ptform_kwargs={'normal': normal, 'fisher_uncertainties': fisher_uncertainties_for_prior}  # Pass kwargs
+    )
+    
+    sampler.run_nested(maxiter=500, print_progress=True)  # Removed checkpoint_file
+
+    # Save the sampler as a pickle file
+    with open(path+'posteriors/'+event_name+'_sampler.pkl', 'wb') as f:
+        pickle.dump(sampler.results, f)
+
+    res = sampler.results
+
+    # print for logs
+    print(f'Event {event_name} is done')
+    print(res.summary())
+
+    # Save plots
+    self.corner_post(res.samples, event_name, path, truths)
+    self.runplot(res, event_name, path)
+    self.traceplot(res, event_name, path, truths)
+
+    samples = res.samples
+    np.save(path+'posteriors/'+event_name+'_post_samples.npy', samples)
+    
+    return sampler
