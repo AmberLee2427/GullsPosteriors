@@ -22,6 +22,9 @@ if __name__ == "__main__":
     if "-s" in sys.argv:
         sampler_index = sys.argv.index("-s") + 1
         sampling_package = sys.argv[sampler_index]
+        sampling_packages = ["emcee", "dynesty"]
+        if sampling_package not in sampling_packages:
+            sys.exit('Sampling package must be one of: ' + ', '.join(sampling_packages))
     else:
         sampling_package = "emcee"
 
@@ -42,12 +45,6 @@ if __name__ == "__main__":
     plot_initial_figures = True
     plot_final_figures = True
 
-    # Number of steps to discard from the start of the chain when
-    # constructing posterior diagnostic plots.
-    burnin_max_steps = 1000
-    burnin_min_steps = 500  # Minimum number of burn-in steps required
-    burnin_stepi = 200
-
     if "-f" in sys.argv:
         plot_index = sys.argv.index("-f") + 1
         plot_options = sys.argv[plot_index]
@@ -66,7 +63,7 @@ if __name__ == "__main__":
             plot_chain = True
         else:
             plot_chain = False
-        if "t" in plot_options: # Corrected: this should be plot_options, not sys.argv
+        if "t" in plot_options: 
             plot_trace = True
         else:
             plot_trace = False
@@ -105,7 +102,7 @@ if __name__ == "__main__":
     if "-fp" in sys.argv:
         use_fisher_prior = True
         #print("Using Fisher uncertainties to inform prior ranges.")
-        sys.exit('Fisher informed prior ranges not currently supported.')
+        print("Using Fisher uncertainties to inform prior ranges.")
     else:
         use_fisher_prior = False
         print("NOT using Fisher uncertainties to inform prior ranges (using prange_linear/log).")
@@ -148,7 +145,7 @@ if __name__ == "__main__":
 
         # Define ranges for 12 params
         # Log-space parameters
-        p_unc_log_space = np.array([0.1, 0.1, 0.1, 0.05])  # s, q, rho, period
+        p_unc_log_space = np.array([0.1, 0.1, 0.1, 0.1,0.05])  # s, q, rho, tE, period
         prange_log = p_unc_log_space * 2.0
 
         # Linear-space parameters
@@ -156,7 +153,6 @@ if __name__ == "__main__":
             3,
             4,
             5,
-            6,
             7,
             8,
             9,
@@ -182,7 +178,7 @@ if __name__ == "__main__":
 
         # Define ranges for 9 params
         # Log-space parameters (no period)
-        p_unc_log_space = np.array([0.1, 0.1, 0.1])  # s, q, rho
+        p_unc_log_space = np.array([0.1, 0.1, 0.1, 0.1])  # s, q, rho, tE
         prange_log = p_unc_log_space * 2.0
 
         # Linear-space parameters (no i, phase)
@@ -190,12 +186,56 @@ if __name__ == "__main__":
             3,
             4,
             5,
-            6,
             7,
             8,
-        ]  # u0, alpha, t0, tE, piEE, piEN
+        ]  # u0, alpha, t0, piEE, piEN
         p_unc_linear_space = p_unc[linear_indices]
         prange_linear = p_unc_linear_space * 2.0
+
+    if "-adapt" in sys.argv:
+        adaptive_burnin = True
+        if use_fisher_prior:
+            sys.exit('Fisher informed prior ranges not currently supported with adaptive burn-in.')
+    else:
+        adaptive_burnin = False
+
+    if "-prior" in sys.argv:
+        prior_index = sys.argv.index("-prior") + 1
+        prior_type = sys.argv[prior_index]
+        prior_types = ["normal", "uniform", "uniform-unit-cube", "normal-unit-cube"]
+        if prior_type not in prior_types:
+            sys.exit('Prior type must be one of: ' + ', '.join(prior_types))
+    elif sampling_package == "dynesty":
+        prior_type = "normal-unit-cube"
+    else:
+        prior_type = "normal"
+
+
+    if "-n" in sys.argv:
+        n_samples = int(sys.argv[sys.argv.index("-n") + 1])
+    else:
+        n_samples = 1000
+
+    if "-nbimin" in sys.argv:
+        burnin_min_steps = int(sys.argv[sys.argv.index("-nbimin") + 1])
+    else:
+        burnin_min_steps = 500
+
+    if "-nbimax" in sys.argv:
+        burnin_max_steps = int(sys.argv[sys.argv.index("-nbimax") + 1])
+    else:
+        burnin_max_steps = 1000
+
+    if "-nbistep" in sys.argv:
+        burnin_stepi = int(sys.argv[sys.argv.index("-nbistep") + 1])
+    else:
+        burnin_stepi = 200
+    
+    if "-nstep" in sys.argv:
+        n_step = int(sys.argv[sys.argv.index("-nstep") + 1])
+    else:
+        n_step = 100
+
     # ==================================================================
     # END OF MOVED PARAMETER SETUP BLOCK
     # ==================================================================
@@ -329,6 +369,7 @@ if __name__ == "__main__":
         chi2_ew_tref, chi2_tref = fit_obj.get_chi2(
             event_tref,
             truths["params"],
+            measured_flux=False
         )
 
         tmin = np.min([t0 - 2.0 * tE, tc_calc - 2.0 * tE])
@@ -345,15 +386,19 @@ if __name__ == "__main__":
         # determining the tref used for LOM: fit_tref
         A_t0 = event_t0.get_magnification(t_data[0], 0)
         fs_t0, fb_t0 = fit_obj.get_fluxes(A_t0, f_true[0], f_err_true[0] ** 2)
-        chi2_ew_t0_true = (
-            (f_true[0] - (A_t0 * fs_t0 + fb_t0)) ** 2 / f_err_true[0] ** 2
-        )[points]
+        #chi2_ew_t0_true = (
+        #    (f_true[0] - (A_t0 * fs_t0 + fb_t0)) ** 2 / f_err_true[0] ** 2
+        #)[points]
+        chi2_ew_t0_true, _ = fit_obj.get_chi2(event_t0, truths["params"], measured_flux=False)
+        chi2_ew_t0_true = chi2_ew_t0_true[0][points]
 
         A_tc = event_tc.get_magnification(t_data[0], 0)
         fs_tc, fb_tc = fit_obj.get_fluxes(A_tc, f_true[0], f_err_true[0] ** 2)
-        chi2_ew_tc_true = (
-            (f_true[0] - (A_tc * fs_tc + fb_tc)) ** 2 / f_err_true[0] ** 2
-        )[points]
+        #chi2_ew_tc_true = (
+        #    (f_true[0] - (A_tc * fs_tc + fb_tc)) ** 2 / f_err_true[0] ** 2
+        #)[points]
+        chi2_ew_tc_true, _ = fit_obj.get_chi2(event_tc, truths["params"], measured_flux=False)
+        chi2_ew_tc_true = chi2_ew_tc_true[0][points]
 
         A_tref = event_tref.get_magnification(t_data[0], 0)
         fs_tref, fb_tref = fit_obj.get_fluxes(
@@ -361,10 +406,12 @@ if __name__ == "__main__":
             f_true[0],
             f_err_true[0] ** 2,
         )
-        chi2_ew_tref_true = (
-            (f_true[0] - (A_tref * fs_tref + fb_tref)) ** 2
-            / f_err_true[0] ** 2
-        )[points]
+        #chi2_ew_tref_true = (
+        #    (f_true[0] - (A_tref * fs_tref + fb_tref)) ** 2
+        #    / f_err_true[0] ** 2
+        #)[points]
+        chi2_ew_tref_true, _ = fit_obj.get_chi2(event_tref, truths["params"], measured_flux=False)
+        chi2_ew_tref_true = chi2_ew_tref_true[0][points]
 
         chi2_list = [
             np.sum(chi2_ew_t0_true),
@@ -373,6 +420,43 @@ if __name__ == "__main__":
         ]
         tref_list = [truths["t0lens1"], truths["tcroin"], tc_calc]
         fit_tref = tref_list[np.argmin(chi2_list)]
+
+
+        #---- Preping the actual event data and object for fitting ----
+
+        # Cropping data to near-event for fitting
+        t0_win = truths["params"][5]
+        tE_win = truths["params"][6]
+        tmin_fit = min(t0_win - 1.5 * tE_win, tc_calc - 1.5 * tE_win)
+        tmax_fit = max(t0_win + 1.5 * tE_win, tc_calc + 1.5 * tE_win)
+
+        data_cropped = {}
+        for obs_key in data.keys():
+            # Get time data for the current observatory
+            current_obs_t_data = data[obs_key][0, :]
+
+            # Calculate cropping indices specifically for this
+            # observatory's time data
+            points_for_this_obs = np.where(
+                np.logical_and(
+                    current_obs_t_data > tmin_fit,
+                    current_obs_t_data < tmax_fit,
+                )
+            )
+
+            # Crop this observatory's data using its specific indices
+            data_cropped[obs_key] = data[obs_key].T[points_for_this_obs].T
+
+        # make the new master event object using the fit_tref
+        event_fit = Event(
+            parallax_obj,
+            orbit_obj,
+            data_cropped,
+            truths, # Pass the truths dictionary
+            data_obj.sim_time0,
+            fit_tref,
+            LOM_enabled=LOM_enabled,
+        )
 
         end_preamble = time.time()
         print("Time to get data = ", end_preamble - start_time)
@@ -392,18 +476,25 @@ if __name__ == "__main__":
             data_labels = ["W146", "Z087", "K213"]
             tt = np.linspace(tmin, tmax, 10000)
 
-            for obs in event_tc.data.keys():
-                A = event_tc.get_magnification(t_data[obs], obs)
-                fs, fb = fit_obj.get_fluxes(A, data[obs][1], data[obs][2] ** 2)
+            for obs in data.keys():
+                A = event_fit.get_magnification(t_data[obs], obs)
+                # Use true fluxes for plotting
+                fs, fb = fit_obj.get_fluxes(A, data[obs][5], data[obs][6] ** 2)
                 ax1.plot(
                     t_data[obs],
-                    (data[obs][1] - fb) / fs,
+                    (data[obs][5] - fb) / fs,
                     ".",
                     color=colours[obs],
                     label=data_labels[obs],
                     alpha=0.5,
                     zorder=0,
                 )
+                
+                # plot residuals
+                residuals = data[obs][5] - (A * fs + fb)
+                print(f"residuals = {residuals[:10]}")
+                ax2.plot(t_data[obs], residuals, ".", color=colours[obs], label=data_labels[obs], alpha=0.5, zorder=0)
+
 
             ax1.plot(
                 tt,
@@ -465,69 +556,71 @@ if __name__ == "__main__":
             )
             plt.close(fig)
 
-            # --- LOM-Specific Plots ---
-            if LOM_enabled:
-                # Caustic Plot
-                plt.figure()
-                
-                s_tc, _, _ = event_tc.projected_separation(
-                    truths["params"][9],
-                    truths["params"][11],
-                    truths["tcroin"],
-                    phase_offset=truths["params"][10],
-                    t_start=truths["tcroin"],
-                    a=truths["Planet_semimajoraxis"] / truths["rE"],
+
+            # Caustic Plot
+            plt.figure()
+            
+            s_tc, _, _ = event_fit.projected_separation(
+                truths["params"][9],
+                truths["params"][11],
+                truths["tcroin"],
+                phase_offset=truths["params"][10],
+                t_start=truths["tcroin"],
+                a=truths["Planet_semimajoraxis"] / truths["rE"],
+            )
+
+            caustics_tc = vbm.Caustics(s_tc, truths["params"][1])
+            for closed in caustics_tc:
+                plt.plot(
+                    closed[0],
+                    closed[1],
+                    "-",
+                    color="cyan",
+                    ms=0.2,
+                    zorder=0,
+                    alpha=0.5,
                 )
 
-                caustics_tc = vbm.Caustics(s_tc, truths["params"][1])
-                for closed in caustics_tc:
-                    plt.plot(
-                        closed[0],
-                        closed[1],
-                        "-",
-                        color="cyan",
-                        ms=0.2,
-                        zorder=0,
-                        alpha=0.5,
-                    )
+            plt.plot(
+                event_fit.lens1_0[0],
+                event_fit.lens1_0[1],
+                "o",
+                ms=10,
+                color="red",
+                zorder=0,
+            )
+            plt.plot(
+                event_fit.lens2_0[0],
+                event_fit.lens2_0[1],
+                "o",
+                ms=10**q,
+                color="red",
+                zorder=0,
+            )
+
+            if LOM_enabled:
                 plt.plot(
-                    event_tc.lens1_0[0],
-                    event_tc.lens1_0[1],
-                    "o",
-                    ms=10,
-                    color="red",
-                    zorder=0,
-                )
-                plt.plot(
-                    event_tc.lens2_0[0],
-                    event_tc.lens2_0[1],
-                    "o",
-                    ms=10**q,
-                    color="red",
-                    zorder=0,
-                )
-                
-                plt.plot(
-                    event_tc.traj_parallax_dalpha_u1[0],
-                    event_tc.traj_parallax_dalpha_u2[0],
+                    event_fit.traj_parallax_dalpha_u1[0],
+                    event_fit.traj_parallax_dalpha_u2[0],
                     "-",
                     color="cyan",
                     alpha=0.5,
                 )
 
-                plt.grid()
-                plt.axis("equal")
-                plt.legend()
-                plt.savefig(
-                    path + "posteriors/" + event_name + "_truths_caustic.png"
-                )
-                plt.close()
+            plt.grid()
+            plt.axis("equal")
+            plt.legend()
+            plt.savefig(
+                path + "posteriors/" + event_name + "_truths_caustic.png"
+            )
+            plt.close()
 
+            if LOM_enabled:
                 # Delta s Plot
                 plt.figure()
                 plt.plot(
-                    event_tc.tau[0],
-                    event_tc.ss[0],
+                    event_fit.tau[0],
+                    event_fit.ss[0],
                     ".",
                     label="ss",
                     alpha=0.1,
@@ -541,8 +634,8 @@ if __name__ == "__main__":
                 # Delta alpha Plot
                 plt.figure()
                 plt.plot(
-                    event_tc.tau[0],
-                    event_tc.dalpha[0],
+                    event_fit.tau[0],
+                    event_fit.dalpha[0],
                     ".",
                     alpha=0.1,
                 )
@@ -563,104 +656,127 @@ if __name__ == "__main__":
         # ==================================================================
         # SAMPLER SETUP AND RUN
         # ==================================================================
-        print("\nSampling Posterior using emcee")
+        print(f"\nSampling Posterior using {sampling_package}")
         print("--------------------------------")
-        normal = True # This flag controls if priors are normal or uniform *in physical space*
-        nl, mi, stepi = 200, 2000, 100
-        initial_pos = np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(
-            nl, ndim
-        )
+        if prior_type == "normal" or prior_type == "normal-unit-cube":
+            normal = True # This flag controls if priors are normal or uniform *in physical space*
+        else:
+            normal = False
+        nl, mi, stepi = 200, 2000, n_step
+        
+        # Initial positions depend on whether we're using unit cube or physical space
+        if "unit-cube" in prior_type:
+            initial_pos = np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(nl, ndim)
+        # Physical space initial positions will be set later based on sampling package
 
-        # Cropping data to near-event for fitting
-        t0_win = truths["params"][5]
-        tE_win = truths["params"][6]
-        tmin_fit = min(t0_win - 1.5 * tE_win, tc_calc - 1.5 * tE_win)
-        tmax_fit = max(t0_win + 1.5 * tE_win, tc_calc + 1.5 * tE_win)
-
-        data_cropped = {}
-        for obs_key in data.keys():
-            # Get time data for the current observatory
-            current_obs_t_data = data[obs_key][0, :]
-
-            # Calculate cropping indices specifically for this
-            # observatory's time data
-            points_for_this_obs = np.where(
-                np.logical_and(
-                    current_obs_t_data > tmin_fit,
-                    current_obs_t_data < tmax_fit,
-                )
+        if adaptive_burnin:
+            state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
+                nl,
+                ndim,
+                burnin_stepi,
+                fit_obj.lnprob_transform,
+                initial_pos,
+                event_fit,
+                truths, # Pass the truths dictionary
+                prange_linear,
+                prange_log,
+                p_unc, # This is the adaptive prior width array
+                normal,
+                max_steps=burnin_max_steps,
+                threads=threads,
+                event_name=event_name,
+                path=path,
+                labels=labels,
+                min_steps=burnin_min_steps, # Pass min_steps
+                fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting
             )
 
-            # Crop this observatory's data using its specific indices
-            data_cropped[obs_key] = data[obs_key].T[points_for_this_obs].T
+        if sampling_package == "emcee":
+            if "unit-cube" in prior_type:
+                lnp = fit_obj.lnprob_transform
+                # Use unit cube initial positions
+                initial_pos = np.random.rand(nl, ndim)
+            else:
+                lnp = fit_obj.lnprob
+                def lnprob_physical_wrapper(theta, event, truths_dict, prange_linear, prange_log, normal, fisher_uncertainties):
+                    return fit_obj.lnprob(theta, event)
+                # Use physical space initial positions centered on truth
+                initial_pos = np.zeros((nl, ndim))
+                for i in range(ndim):
+                    if i in [0, 1, 2, 6]:  # log parameters (s, q, rho, tE for no-LOM)
+                        # Sample around truth in log space
+                        log_truth = np.log10(truths["params"][i])
+                        log_width = prange_log[i] / 4.0  # Smaller initial spread
+                        initial_pos[:, i] = 10 ** np.random.normal(log_truth, log_width, nl)
+                    else:  # linear parameters
+                        lin_idx = i - 3 if not LOM_enabled else i - 3  # Adjust for log params
+                        if lin_idx < len(prange_linear):
+                            width = prange_linear[lin_idx] / 4.0  # Smaller initial spread
+                            initial_pos[:, i] = np.random.normal(truths["params"][i], width, nl)
+                        else:
+                            initial_pos[:, i] = truths["params"][i]  # Fallback to truth
+            
+            # If no adaptive burnin was run, create state from initial positions
+            if not adaptive_burnin:
+                state = initial_pos
 
-        event_fit = Event(
-            parallax_obj,
-            orbit_obj,
-            data_cropped,
-            truths, # Pass the truths dictionary
-            data_obj.sim_time0,
-            fit_tref,
-            LOM_enabled=LOM_enabled,
-        )
+            sampler = fit_obj.run_emcee(
+                nl,
+                ndim,
+                stepi,
+                mi,
+                fit_obj.lnprob_transform,
+                state,
+                event_fit,
+                truths, # Pass the truths dictionary
+                prange_linear,
+                prange_log,
+                normal,
+                threads=threads,
+                event_name=event_name,
+                path=path,
+                labels=labels,
+                fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
+                fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior #should be none
+            )
 
-        state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
-            nl,
-            ndim,
-            burnin_stepi,
-            fit_obj.lnprob_transform,
-            initial_pos,
-            event_fit,
-            truths, # Pass the truths dictionary
-            prange_linear,
-            prange_log,
-            p_unc, # This is the adaptive prior width array
-            normal,
-            max_steps=burnin_max_steps,
-            threads=threads,
-            event_name=event_name,
-            path=path,
-            labels=labels,
-            min_steps=burnin_min_steps, # Pass min_steps
-            fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting
-        )
+        elif sampling_package == "dynesty":
 
-        sampler = fit_obj.run_emcee(
-            nl,
-            ndim,
-            stepi,
-            mi,
-            fit_obj.lnprob_transform,
-            state,
-            event_fit,
-            truths, # Pass the truths dictionary
-            prange_linear,
-            prange_log,
-            normal,
-            threads=threads,
-            event_name=event_name,
-            path=path,
-            labels=labels,
-            fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
-            fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior #should be none
-        )
-
+            sampler = fit_obj.run_dynesty(
+                event_fit,
+                event_name,
+                ndim,
+                path,
+                truths,
+                prange_linear,
+                prange_log,
+                normal,
+                fit_obj.fisher_uncertainties_for_prior
+            )
         end_sampler = time.time()
         print(f"Time to run sampler= {end_sampler - end_initial_figures}")
 
         # ==================================================================
         # SAVE RESULTS AND MAKE FINAL PLOTS
         # ==================================================================
-        flat_chain = sampler.get_chain(flat=True)
+        if sampling_package == "emcee":
+            flat_chain = sampler.get_chain(flat=True)
+        elif sampling_package == "dynesty":
+            flat_chain = sampler.results.samples
+            
         # Note: prior_transform takes truths_array, not truths dictionary
-        samples_phys = fit_obj.prior_transform(
-            flat_chain,
-            truths["params"][:ndim], # Pass the array of truth values
-            prange_linear,
-            prange_log,
-            normal=normal, # Use the 'normal' flag from the sampling run
-            fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
-        )
+        if "unit-cube" in prior_type:
+            samples_phys = fit_obj.prior_transform(
+                flat_chain,
+                truths["params"][:ndim], # Pass the array of truth values
+                prange_linear,
+                prange_log,
+                normal=normal, # Use the 'normal' flag from the sampling run
+                fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
+            )
+        else:
+            samples_phys = flat_chain
+
         np.save(
             path + "posteriors/" + event_name + "_post_samples.npy",
             samples_phys,
@@ -671,17 +787,25 @@ if __name__ == "__main__":
             pickle.dump(truths, f)
 
         if plot_post:
-            flat_chain_post = sampler.get_chain(flat=True)
-            samples_for_corner = fit_obj.prior_transform(
-                flat_chain_post,
-                truths["params"][:ndim], # Pass the array of truth values
-                prange_linear,
-                prange_log,
-                normal=normal, # Use the 'normal' flag from the sampling run
-                fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
-            )
+            if sampling_package == "emcee":
+                flat_chain_post = sampler.get_chain(flat=True)
+            elif sampling_package == "dynesty":
+                flat_chain_post = sampler.results.samples
+                
+            if "unit-cube" in prior_type:
+                samples_for_corner = fit_obj.prior_transform(
+                    flat_chain_post,
+                    truths["params"][:ndim], # Pass the array of truth values
+                    prange_linear,
+                    prange_log,
+                    normal=normal, # Use the 'normal' flag from the sampling run
+                    fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior # Pass the *actual* fisher_unc that defined the prior
+                )
+            else:
+                samples_for_corner = flat_chain_post
+
             # Use the stored fisher_covariance and fisher_uncertainties for plotting
-            log_param_names = ["s", "q", "rho", "period"] if LOM_enabled else ["s", "q", "rho"]
+            log_param_names = ["s", "q", "rho", "tE", "period"] if LOM_enabled else ["s", "q", "rho", "tE"]
             fit_obj.corner_post(
                 samples_for_corner, 
                 event_name, 

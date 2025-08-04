@@ -269,7 +269,7 @@ def run_burnin(
         nl, ndim, log_prob_function, args=log_prob_args, pool=pool_ctx
     )
 
-    log_param_names = ["s", "q", "rho"]
+    log_param_names = ["s", "q", "rho", "tE"]
     if self.LOM_enabled:
         log_param_names.append("period")
     log_indices = [i for i, l in enumerate(labels) if l in log_param_names]
@@ -560,7 +560,15 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
     plt.close(fig)
 
 
-def corner_post(self, samples, event_name, path, truths, fisher_covariance=None, fisher_uncertainties=None, log_param_names=None):
+def corner_post(
+        self, 
+        samples, 
+        event_name, 
+        path, truths, 
+        fisher_covariance=None, 
+        fisher_uncertainties=None, 
+        log_param_names=None,
+        k2 = 1):
     """Create a corner plot of the posterior samples, with Fisher uncertainty lines and ellipses.
 
     Parameters
@@ -579,12 +587,35 @@ def corner_post(self, samples, event_name, path, truths, fisher_covariance=None,
         1-sigma Fisher uncertainties for each parameter (in linear space).
     log_param_names : list or None, optional
         List of parameter names that are log-transformed.
+    k2 : float, optional
+        The k² value for the confidence ellipse. Default is 1 (39% confidence).
 
     Notes
     -----
-    The 68% confidence ellipse for each 2D parameter pair is drawn using the Fisher covariance matrix. The ellipse is defined by:
+    The 68% confidence ellipse for each 2D parameter pair is drawn using the 
+    Fisher covariance matrix. The ellipse is defined by:
         (x - x0, y - y0)^T @ Sigma^{-1} @ (x - x0, y - y0) = k^2
-    where Sigma is the 2x2 Fisher covariance submatrix, (x0, y0) is the truth, and k^2 = 2.30 for a 68% confidence region in 2D. The axes of the ellipse are given by the eigenvalues and eigenvectors of Sigma, and the ellipse is centered at the truth value.
+    where Sigma is the 2x2 Fisher covariance submatrix, (x0, y0) is the truth.
+    For a bivariate normal the quadratic form on the left follows a χ² 
+    distribution with ν = 2 degrees of freedom
+    Therefore,
+        P [ inside ellipse ] = Fχ²₂,
+    where Fχ²₂ is the cumulative distribution function (CDF) of the χ² 
+    distribution with ν = 2 degrees of freedom.
+    * k² = 1 → P = 1 - e^(–½) ≈ 0.393  (≈ 39 %)
+    * k² = 2.30 → P ≈ 0.683  (the usual “1 σ” ≃ 68 %)
+    * k² = 4.61 → P ≈ 0.954  (the usual “2 σ” ≃ 95 %)
+    * k² = 9.21 → P ≈ 0.997  (the usual “3 σ” ≃ 99.7 %)
+    So:
+    * Setting k² = 1 draws the ellipse that encloses the region where the 
+    Mahalanobis distance is ≤ 1; that region contains about 39 % of the 
+    probability mass in two dimensions.
+    * Setting k² = 2.30 draws the ellipse that encloses 68.3% of the mass--the 
+    2-D analogue of the familiar 1 σ (68 %) interval in 1-D.
+    
+    The axes of the ellipse 
+    are given by the eigenvalues and eigenvectors of Sigma, and the ellipse is 
+    centered at the truth value.
 
     Returns
     -------
@@ -593,37 +624,61 @@ def corner_post(self, samples, event_name, path, truths, fisher_covariance=None,
     import matplotlib.patches as mpatches
     if self.LOM_enabled:
         labels = [
-            "s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"
+            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}\rho$", 
+            r"$u_0$", r"$\alpha$", r"$t_0$", r"$\log_{10}t_E$", 
+            r"$\pi_{EE}$", r"$\pi_{EN}$", 
+            r"$i$", r"$\phi$", r"$\log_{10}P$"
         ]
         true_params = truths["params"]
     else:
-        labels = ["s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN"]
+        labels = [
+            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}\rho$", 
+            r"$u_0$", r"$\alpha$", r"$t_0$", r"$\log_{10}t_E$", 
+            r"$\pi_{EE}$", r"$\pi_{EN}$"
+        ]
         true_params = truths["params"][:9]
     ndim = len(labels)
     if log_param_names is None:
-        log_param_names = ["s", "q", "rho", "period"]
+        log_param_names = ["s", "q", "rho", "tE", "period"]
 
-    fig = corner.corner(samples, labels=labels, truths=true_params)
+    # log transform the samples if necessary
+    log_samples = np.zeros_like(samples)
+    for i in range(ndim):
+        if labels[i] in log_param_names:
+            log_samples[:, i] = np.log10(samples[:, i])
+        else:
+            log_samples[:, i] = samples[:, i]
+
+    fig = corner.corner(log_samples, labels=labels, truths=true_params)
     axes = np.array(fig.axes).reshape((ndim, ndim))
 
     # 1D: Add solid blue vertical lines at truth, and at truth ± Fisher uncertainty
     for i in range(ndim):
         ax = axes[i, i]
         truth = true_params[i]
+        # transform truth into log space if necessary
+        if labels[i] in log_param_names:
+            truth = np.log10(truth)
         sigma = None if fisher_uncertainties is None else fisher_uncertainties[i]
         param_name = labels[i]
         truth_text = ""
 
         if truth is not None:
+            # print in physical space
             ax.axvline(truth, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
-            truth_text += f"True: {true_params[i]:.2f}"
+            truth_text += f"{true_params[i]:.4f}"
 
         if sigma is not None:
             # Plot in physical space (corner plots are already in physical space)
             ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
             ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
             # The blue text for the truth and Fisher uncertainty
-            truth_text += f" $\pm$ {fisher_uncertainties[i]:.2f}"
+            if labels[i] in log_param_names:
+                # df = sqrt(df_log^2 + (f/f')^2)
+                uncert = np.sqrt(sigma**2 + (truth/sigma)**2)
+                truth_text += f" $\pm$ {uncert:.4f}"
+            else:
+                truth_text += f" $\pm$ {sigma:.4f}"
 
         # values labels
         p_16, p_50, p_84 = np.percentile(samples[:, i], [16, 50, 84])
@@ -631,42 +686,61 @@ def corner_post(self, samples, event_name, path, truths, fisher_covariance=None,
         lower_unc = p_50 - p_16
 
         # The black text for your posterior results
-        post_text = f"${p_50:.2f}^{{+{upper_unc:.2f}}}_{{-{lower_unc:.2f}}}$"
+        post_text = f"${p_50:.4f}^{{+{upper_unc:.4f}}}_{{-{lower_unc:.4f}}}$"
 
         # Place the black text (samples) near the top center
         ax.text(0.5, 1.05, post_text, color="black", ha='center', va='center', transform=ax.transAxes)
 
         # Place the blue text (Truth) just below it
-        ax.text(0.5, 1.2, truth_text, color="blue", ha='center', va='center', transform=ax.transAxes)
+        ax.text(0.5, 1.15, truth_text, color="blue", ha='center', va='center', transform=ax.transAxes)
 
     # 2D: Add solid blue cross-bars and 68% confidence ellipse
     if fisher_covariance is not None:
-        k2 = 2.30  # 68% confidence region in 2D
         for i in range(ndim):
             for j in range(i):
                 ax = axes[i, j]
                 x0, y0 = true_params[j], true_params[i]
+                # transform truth into log space if necessary
+                if labels[j] in log_param_names:
+                    x0 = np.log10(x0)
+                if labels[i] in log_param_names:
+                    y0 = np.log10(y0)
                 cov = np.array([
                     [fisher_covariance[j, j], fisher_covariance[j, i]],
                     [fisher_covariance[i, j], fisher_covariance[i, i]]
-                ])
+                ])  #extract the 2 × 2 sub–covariance matrix
+
                 # Draw cross-bars
                 sigma_x = np.sqrt(fisher_covariance[j, j])
                 sigma_y = np.sqrt(fisher_covariance[i, i])
+
                 ax.axvline(x0, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
                 ax.axhline(y0, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
                 ax.axvline(x0 + sigma_x, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 ax.axvline(x0 - sigma_x, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 ax.axhline(y0 + sigma_y, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 ax.axhline(y0 - sigma_y, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-                # Draw 68% confidence ellipse
-                vals, vecs = np.linalg.eigh(cov)
-                order = vals.argsort()[::-1]
+                
+                # Draw confidence ellipse
+                vals, vecs = np.linalg.eigh(cov)  # Compute eigenvalues and eigenvectors
+                order = vals.argsort()[::-1]  # Sort eigenvalues in descending order
                 vals = vals[order]
-                vecs = vecs[:, order]
-                width, height = 2 * np.sqrt(k2 * vals)
-                angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
-                ellipse = mpatches.Ellipse((x0, y0), width, height, angle=angle, edgecolor="blue", facecolor="none", linestyle=":", linewidth=1.5, alpha=0.5, zorder=10)
+                vecs = vecs[:, order]  # Sort eigenvectors in the sameorder
+                width, height = 2 * np.sqrt(k2 * vals)  # Compute width and height of the ellipse
+                                                        # a = √(k² λ₁), b = √(k² λ₂)
+                angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))  # Compute the angle of the ellipse
+                ellipse = mpatches.Ellipse(
+                    (x0, y0), 
+                    width, 
+                    height, 
+                    angle=angle, 
+                    edgecolor="blue", 
+                    facecolor="none", 
+                    linestyle=":", 
+                    linewidth=1.5, 
+                    alpha=0.5, 
+                    zorder=10
+                )
                 ax.add_patch(ellipse)
 
     fig.suptitle(event_name, y=1.0)
