@@ -659,65 +659,59 @@ if __name__ == "__main__":
         print(f"\nSampling Posterior using {sampling_package}")
         print("--------------------------------")
         if prior_type == "normal" or prior_type == "normal-unit-cube":
-            normal = True # This flag controls if priors are normal or uniform *in physical space*
+            normal = True  # This flag controls if priors are normal or uniform *in physical space*
         else:
             normal = False
-        nl, mi, stepi = 200, 2000, n_step
-        
-        # Initial positions depend on whether we're using unit cube or physical space
-        if "unit-cube" in prior_type:
-            initial_pos = np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(nl, ndim)
-        # Physical space initial positions will be set later based on sampling package
-
-        if adaptive_burnin:
-            state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
-                nl,
-                ndim,
-                burnin_stepi,
-                fit_obj.lnprob_transform,
-                initial_pos,
-                event_fit,
-                truths, # Pass the truths dictionary
-                prange_linear,
-                prange_log,
-                p_unc, # This is the adaptive prior width array
-                normal,
-                max_steps=burnin_max_steps,
-                threads=threads,
-                event_name=event_name,
-                path=path,
-                labels=labels,
-                min_steps=burnin_min_steps, # Pass min_steps
-                fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting
-            )
+        nl, mi, stepi = 200, n_samples, n_step
 
         if sampling_package == "emcee":
+            # Choose the appropriate log-probability function and initial
+            # positions depending on whether we are sampling in the unit cube
+            # or in physical space.
             if "unit-cube" in prior_type:
                 lnp = fit_obj.lnprob_transform
-                # Use unit cube initial positions
-                initial_pos = np.random.rand(nl, ndim)
+                # Start near the centre of the unit cube to avoid a stupidly
+                # wide initial state.
+                initial_pos = (
+                    np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(nl, ndim)
+                )
             else:
                 lnp = fit_obj.lnprob
-                def lnprob_physical_wrapper(theta, event, truths_dict, prange_linear, prange_log, normal, fisher_uncertainties):
-                    return fit_obj.lnprob(theta, event)
-                # Use physical space initial positions centered on truth
-                initial_pos = np.zeros((nl, ndim))
+                # Start walkers in a tiny ball around the truth
+                initial_pos = np.tile(truths["params"][:ndim], (nl, 1))
+                if LOM_enabled:
+                    log_indices = [0, 1, 2, 6, 11]
+                else:
+                    log_indices = [0, 1, 2, 6]
+                scatter = 1e-4
                 for i in range(ndim):
-                    if i in [0, 1, 2, 6]:  # log parameters (s, q, rho, tE for no-LOM)
-                        # Sample around truth in log space
-                        log_truth = np.log10(truths["params"][i])
-                        log_width = prange_log[i] / 4.0  # Smaller initial spread
-                        initial_pos[:, i] = 10 ** np.random.normal(log_truth, log_width, nl)
-                    else:  # linear parameters
-                        lin_idx = i - 3 if not LOM_enabled else i - 3  # Adjust for log params
-                        if lin_idx < len(prange_linear):
-                            width = prange_linear[lin_idx] / 4.0  # Smaller initial spread
-                            initial_pos[:, i] = np.random.normal(truths["params"][i], width, nl)
-                        else:
-                            initial_pos[:, i] = truths["params"][i]  # Fallback to truth
-            
-            # If no adaptive burnin was run, create state from initial positions
-            if not adaptive_burnin:
+                    if i in log_indices:
+                        initial_pos[:, i] *= 10 ** (scatter * np.random.randn(nl))
+                    else:
+                        initial_pos[:, i] += scatter * p_unc[i] * np.random.randn(nl)
+
+            if adaptive_burnin:
+                state, p_unc, prange_linear, prange_log = fit_obj.run_burnin(
+                    nl,
+                    ndim,
+                    burnin_stepi,
+                    lnp,
+                    initial_pos,
+                    event_fit,
+                    truths,  # Pass the truths dictionary
+                    prange_linear,
+                    prange_log,
+                    p_unc,  # This is the adaptive prior width array
+                    normal,
+                    max_steps=burnin_max_steps,
+                    threads=threads,
+                    event_name=event_name,
+                    path=path,
+                    labels=labels,
+                    min_steps=burnin_min_steps,  # Pass min_steps
+                    fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
+                )
+            else:
                 state = initial_pos
 
             sampler = fit_obj.run_emcee(
@@ -725,10 +719,10 @@ if __name__ == "__main__":
                 ndim,
                 stepi,
                 mi,
-                fit_obj.lnprob_transform,
+                lnp,
                 state,
                 event_fit,
-                truths, # Pass the truths dictionary
+                truths,  # Pass the truths dictionary
                 prange_linear,
                 prange_log,
                 normal,
@@ -737,7 +731,7 @@ if __name__ == "__main__":
                 path=path,
                 labels=labels,
                 fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
-                fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior #should be none
+                fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior,  # should be none
             )
 
         elif sampling_package == "dynesty":
