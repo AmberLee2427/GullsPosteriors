@@ -129,13 +129,13 @@ if __name__ == "__main__":
         p_unc = np.array(
             [
                 0.05,
-                0.05,
+                0.1,
                 0.5,
                 0.1,
                 0.05,
                 0.5,
                 2.5,
-                2.5,
+                5.0,
                 5.0,
                 np.pi / 2.0,
                 np.pi / 2.0,
@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
         # Define ranges for 12 params
         # Log-space parameters
-        p_unc_log_space = np.array([0.1, 0.1, 0.1, 0.1,0.05])  # s, q, rho, tE, period
+        p_unc_log_space = np.array([0.1, 0.5, 0.5, 0.1, 0.05])  # s, q, rho, tE, period
         prange_log = p_unc_log_space * 2.0
 
         # Linear-space parameters
@@ -157,7 +157,7 @@ if __name__ == "__main__":
             8,
             9,
             10,
-        ]  # u0, alpha, t0, tE, piEE, piEN, i, phase
+        ]  # u0, alpha, t0, piEE, piEN, i, phase
         p_unc_linear_space = p_unc[linear_indices]
         prange_linear = p_unc_linear_space * 2.0
 
@@ -174,11 +174,11 @@ if __name__ == "__main__":
             "piEE",
             "piEN",
         ]
-        p_unc = np.array([0.05, 0.05, 0.1, 0.1, 0.05, 0.5, 2.5, 2.5, 5.0])
+        p_unc = np.array([0.05, 0.1, 0.5, 0.1, 0.05, 0.5, 2.5, 5.0, 5.0])
 
         # Define ranges for 9 params
         # Log-space parameters (no period)
-        p_unc_log_space = np.array([0.1, 0.1, 0.1, 0.1])  # s, q, rho, tE
+        p_unc_log_space = np.array([0.1, 0.5, 0.5, 0.1])  # s, q, rho, tE
         prange_log = p_unc_log_space * 2.0
 
         # Linear-space parameters (no i, phase)

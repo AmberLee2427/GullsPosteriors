@@ -649,6 +649,10 @@ def corner_post(
         else:
             log_samples[:, i] = samples[:, i]
 
+    # drop the first half of the samples
+    nsteps = log_samples.shape[0]
+    log_samples = log_samples[nsteps//2:]
+
     fig = corner.corner(log_samples, labels=labels, truths=true_params)
     axes = np.array(fig.axes).reshape((ndim, ndim))
 
@@ -664,20 +668,30 @@ def corner_post(
         truth_text = ""
 
         if truth is not None:
-            # print in physical space
+            # Plot truth line in log space (for log params) or physical space (for linear params)
             ax.axvline(truth, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
             truth_text += f"{true_params[i]:.4f}"
 
         if sigma is not None:
-            # Plot in physical space (corner plots are already in physical space)
-            ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-            ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-            # The blue text for the truth and Fisher uncertainty
             if labels[i] in log_param_names:
-                # df = sqrt(df_log^2 + (f/f')^2)
-                uncert = np.sqrt(sigma**2 + (truth/sigma)**2)
-                truth_text += f" $\pm$ {uncert:.4f}"
+                # For log parameters: Fisher uncertainties are ALREADY in log space
+                # So plot them directly in log space
+                ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                
+                # The blue text shows physical space truth ± physical space uncertainty
+                # Convert log-space sigma to physical space for display
+                phys_truth = true_params[i]
+                phys_plus = 10**(np.log10(phys_truth) + sigma)
+                phys_minus = 10**(np.log10(phys_truth) - sigma)
+                phys_sigma_plus = phys_plus - phys_truth
+                phys_sigma_minus = phys_truth - phys_minus
+                # Use asymmetric error bars in text
+                truth_text += f"$^{{+{phys_sigma_plus:.4f}}}_{{-{phys_sigma_minus:.4f}}}$"
             else:
+                # For linear parameters: Fisher uncertainties are in physical space
+                ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 truth_text += f" $\pm$ {sigma:.4f}"
 
         # values labels

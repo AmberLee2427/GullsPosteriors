@@ -495,6 +495,42 @@ class Data:
         if len(col_names) > 0:  
             self.model_derivatives = data[col_names].to_numpy()
 
+            # REORDER DERIVATIVES TO MATCH OUR PARAMETER ORDER
+            # Simulation team's order: [t0, tE, u0, alpha, s, q, rs, piEN, piEE, flux_params...]
+            # Our parameter order:     [s, q, rho, u0, alpha, t0, tE, piEE, piEN]
+            # 
+            # Mapping from their indices to our indices:
+            # Their: [0=t0, 1=tE, 2=u0, 3=alpha, 4=s, 5=q, 6=rs, 7=piEN, 8=piEE]
+            # Ours:  [0=s,  1=q,  2=rho, 3=u0,   4=alpha, 5=t0, 6=tE, 7=piEE, 8=piEN]
+            # 
+            # So reorder mapping: [4, 5, 6, 2, 3, 0, 1, 8, 7] (their indices → our order)
+            
+            # Determine how many observatory groups we have and extract only the first 9 params per group
+            n_cols = self.model_derivatives.shape[1]
+            
+            # Assume we have multiple observatory groups, each with the same parameter structure
+            # Count parameters per group by finding flux parameters (assume they start after the 9 main params)
+            # For now, let's assume we want the first 9 parameters from the first observatory group
+            
+            if n_cols >= 9:  # Make sure we have at least 9 parameters
+                # Extract first 9 derivatives (from first observatory group)
+                derivatives_first_group = self.model_derivatives[:, :9]
+                
+                # Reorder from simulation order to our order
+                # Their order: [t0, tE, u0, alpha, s, q, rs, piEN, piEE]
+                # Our order:   [s, q, rho, u0, alpha, t0, tE, piEE, piEN]
+                reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
+                
+                # Apply reordering
+                self.model_derivatives = derivatives_first_group[:, reorder_indices]
+                
+                print(f"Reordered derivatives from simulation order to our parameter order")
+                print(f"Original shape: {derivatives_first_group.shape}")
+                print(f"Reordered shape: {self.model_derivatives.shape}")
+                print(f"Parameter order is now: [s, q, rho, u0, alpha, t0, tE, piEE, piEN]")
+            else:
+                print(f"Warning: Only {n_cols} derivative columns found, expected at least 9")
+
             # Form the data covariance matrix (diagonal matrix of flux uncertainties)
             # We need to get the flux errors for all data points
             flux_errors = data["measured_relative_flux_error"].values
@@ -505,7 +541,7 @@ class Data:
 
             # Calculate the Fisher matrix: F = ∇ᵀC⁻¹∇
             # where ∇ is the matrix of model derivatives
-            n_params = len(col_names)
+            n_params = self.model_derivatives.shape[1]  # Use reordered derivatives
             n_data = len(flux_errors)
             self.fisher_matrix = np.zeros((n_params, n_params))
             
