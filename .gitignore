@@ -55,3 +55,8 @@ sample-241113/
 trash/
 #FishVBM_Therr_m20/
 repsample/
+
+# Ignore large data artifacts
+*.out.hdf5
+*.hdf5
+
