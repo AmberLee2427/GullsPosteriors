@@ -750,7 +750,7 @@ def corner_post(
                     angle=angle, 
                     edgecolor="blue", 
                     facecolor="none", 
-                    linestyle=":", 
+                    linestyle="-", 
                     linewidth=1.5, 
                     alpha=0.5, 
                     zorder=10
