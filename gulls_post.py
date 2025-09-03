@@ -57,7 +57,7 @@ def derive_plot_flags(args):
 
     flags = args.plots or ""
     if "n" in flags:
-        return False, False, False, False, False
+        return False, False, False, False, False, False
 
     plot_initial = "i" in flags
     plot_chain = "c" in flags
@@ -110,12 +110,10 @@ def choose_prior_type(args):
 def build_plot_titles(LOM_enabled):
     if LOM_enabled:
         ts = ("s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, "
-              "
-tE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f")
+              "\ntE=%.2f, piEE=%.2f, piEN=%.2f, i=%.2f, phase=%.2f, period=%.2f")
     else:
         ts = ("s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, "
-              "
-tE=%.2f, piEE=%.2f, piEN=%.2f")
+              "\ntE=%.2f, piEE=%.2f, piEN=%.2f")
     return ts
 
 
@@ -159,15 +157,10 @@ def run(args):
             print(f"No more new events to process after {i} events. Exiting.")
             break
         truths = truths_series.to_dict()
-        if params in truths and isinstance(truths[params], list):
-            truths[params] = np.array(truths[params])
+        if 'params' in truths and isinstance(truths['params'], list):
+            truths['params'] = np.array(truths['params'])
 
-        print("
-
-
-
-
-event_name =", event_name)
+        print("\n\n\n\nevent_name =", event_name)
         print("---------------------------------------")
         print("truths =", truths)
 
@@ -228,8 +221,7 @@ event_name =", event_name)
         event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=LOM_enabled)
 
         # Sampler setup
-        print(f"
-Sampling Posterior using {args.sampler}")
+        print(f"\nSampling Posterior using {args.sampler}")
         normal = (prior_type in ["normal", "normal-unit-cube"])  # normal vs uniform priors in physical space
         nl, mi, stepi = 200, args.n_samples, args.n_step
 
@@ -296,9 +288,9 @@ Sampling Posterior using {args.sampler}")
                                 fisher_covariance=fit_obj.fisher_covariance_for_plotting,
                                 fisher_uncertainties=fit_obj.fisher_uncertainties_for_plotting,
                                 log_param_names=log_param_names)
-        if plot_trace and hasattr(fit_obj, traceplot):
+        if plot_trace and hasattr(fit_obj, 'traceplot'):
             fit_obj.traceplot(sampler, event_name, path, truths)
-        if plot_run and hasattr(fit_obj, runplot):
+        if plot_run and hasattr(fit_obj, 'runplot'):
             fit_obj.runplot(sampler, event_name, path)
 
         print(f"Event {i} ({event_name}) is done")
@@ -311,14 +303,9 @@ Sampling Posterior using {args.sampler}")
             np.savetxt(path + "emcee_complete.txt", complete_list, fmt="%s")
 
     end_time = time.time()
-    print("
-
---- Timing Summary ---")
+    print("\n\n--- Timing Summary ---")
     print("Total time =", end_time - start_time)
-    print("--------------------------------
-
-
-")
+    print("--------------------------------\n\n")
 
 
 if __name__ == "__main__":
