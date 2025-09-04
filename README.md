@@ -56,8 +56,8 @@ python gulls_post.py 1 /path/to/data -s dynesty
 # Run with adaptive burn-in (emcee only)
 python gulls_post.py 5 /path/to/data -s emcee -adapt
 
-# Control plots: i=initial, c=chain, t=trace, p=posterior, f=final
-python gulls_post.py 1 /path/to/data -f cp  # only chain and posterior plots
+# Control plots: i=initial, c=chains, t=trace, p=posterior (corner), f=final
+python gulls_post.py 1 /path/to/data -f cp  # only chains and posterior plots
 python gulls_post.py 1 /path/to/data -f n   # no plots
 ```
 

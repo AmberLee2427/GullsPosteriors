@@ -78,10 +78,15 @@ def run_emcee(
     # Set the current event for the prior
     self.current_event = event_obj
 
-    # The new arguments to be passed to the log probability function
-    # truths (the dictionary) is passed here, and lnprob_transform will extract truths['params']
-    # Pass fisher_uncertainties_for_prior to log_prob_function
-    log_prob_args = [event_obj, truths, prange_linear, prange_log, normal, fisher_uncertainties_for_prior]
+    # Set up arguments based on which log probability function we're using
+    # lnprob_transform expects: (self, u, event, truths_dict, prange_linear, prange_log, normal, fisher_uncertainties_for_prior)
+    # lnprob expects: (self, theta, event)
+    if log_prob_function == self.lnprob_transform:
+        # Using unit-cube priors with transform
+        log_prob_args = [event_obj, truths, prange_linear, prange_log, normal, fisher_uncertainties_for_prior]
+    else:
+        # Using direct physical space priors
+        log_prob_args = [event_obj]
 
     if threads > 1:
         with Pool(threads) as pool:
@@ -115,13 +120,14 @@ def run_emcee(
 
                 # Pass the actual truths['params'] and fisher_uncertainties to plot_chain
                 # Also pass prange_linear, prange_log, and normal for detransform_theta
-                self.plot_chain(sampler, event_name, path, labels=labels,
-                                truths=truths['params'], # Pass the actual physical truths array
-                                fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
-                                fisher_uncertainties_for_prior=fisher_uncertainties_for_prior,
-                                prange_linear=prange_linear,
-                                prange_log=prange_log,
-                                normal=normal)
+                if self.plot_chains:
+                    self.plot_chain(sampler, event_name, path, labels=labels,
+                                    truths=truths['params'], # Pass the actual physical truths array
+                                    fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
+                                    fisher_uncertainties_for_prior=fisher_uncertainties_for_prior,
+                                    prange_linear=prange_linear,
+                                    prange_log=prange_log,
+                                    normal=normal)
 
                 steps += stepi
                 count += 1
@@ -154,13 +160,14 @@ def run_emcee(
                 path + "posteriors/" + event_name + "_emcee_state.npy", state
             )
 
-            self.plot_chain(sampler, event_name, path, labels=labels,
-                            truths=truths['params'], # Pass the actual physical truths array
-                            fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
-                            fisher_uncertainties_for_prior=fisher_uncertainties_for_prior,
-                            prange_linear=prange_linear,
-                            prange_log=prange_log,
-                            normal=normal)
+            if self.plot_chains:
+                self.plot_chain(sampler, event_name, path, labels=labels,
+                                truths=truths['params'], # Pass the actual physical truths array
+                                fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
+                                fisher_uncertainties_for_prior=fisher_uncertainties_for_prior,
+                                prange_linear=prange_linear,
+                                prange_log=prange_log,
+                                normal=normal)
 
             steps += stepi
             count += 1
@@ -290,13 +297,14 @@ def run_burnin(
         print(f"Fisher uncertainties: {fisher_uncertainties_for_plotting}")
 
         # Plotting burn-in chain - pass the physical truths and other prior params
-        self.plot_chain(sampler, f"{event_name}_burnin", path, labels=labels,
-                        truths=truths['params'], # Pass the actual physical truths array
-                        fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
-                        prange_linear=prange_linear,
-                        prange_log=prange_log,
-                        normal=normal,
-                        burnin_or_post="burnin")
+        if self.plot_chain:
+            self.plot_chain(sampler, f"{event_name}_burnin", path, labels=labels,
+                            truths=truths['params'], # Pass the actual physical truths array
+                            fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
+                            prange_linear=prange_linear,
+                            prange_log=prange_log,
+                            normal=normal,
+                            burnin_or_post="burnin")
 
         # Update for emcee 3.x API
         positions = state # Access coordinates from the State object
@@ -455,97 +463,144 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
     -------
     None
     """
-    chain = res.chain  # shape = (nwalkers, nsteps, ndim) - This is in unit cube space
+    chain = res.chain  # shape = (nwalkers, nsteps, ndim) - Could be unit cube OR physical space
     lnprobability = res.lnprobability  # shape = (nwalkers, nsteps)
     ndim = chain.shape[2]
     nsteps = chain.shape[1]
     nwalkers = chain.shape[0]
 
-    # detransformed truth (in unit cube space)
-    # should return an ndim-D array of 0.5 values
+    # Detect whether chain is in unit-cube space or physical space
+    # Unit-cube chains have all values between 0 and 1
+    # Physical chains have realistic parameter values
+    chain_flat = chain.reshape(-1, ndim)
+    is_unit_cube = np.all((chain_flat >= 0) & (chain_flat <= 1))
+    
+    print(f"Chain space detection: {'unit-cube' if is_unit_cube else 'physical'}")
+    print(f"Chain value ranges: min={np.min(chain_flat, axis=0)}, max={np.max(chain_flat, axis=0)}")
+
+    # Extract the relevant subset of truths for the current model
     if truths is not None:
         if self.LOM_enabled:
-            truths_for_detransform = truths[:12]  # this is brittle and should be fixed
+            truths_subset = truths[:12]  # this is brittle and should be fixed
         else:
-            truths_for_detransform = truths[:9]
-        # Detransform the truth values to unit cube space
-        u_truths_mapped = self.detransform_theta(
-            truths_for_detransform, 
-            truths, 
-            prange_linear,
-            prange_log,
-            normal,
-            fisher_uncertainties_for_prior # USE THE CORRECT PRIOR DEFINITION
-        )
-        # do a sanity check that u_truths_mapped is an ndim-D array of 0.5 values
-        if u_truths_mapped.shape[0] != ndim:
-            print(f"u_truths_mapped.shape: {u_truths_mapped.shape}")
-            print(f"ndim: {ndim}")
-            print(f'u_truths_mapped type: {type(u_truths_mapped)}')
-            raise ValueError("u_truths_mapped is not an ndim-D array")
-        if not np.all(u_truths_mapped == 0.5):
-            print("WARNING: u_truths_mapped is not an array of 0.5 values")
-            print(f"u_truths_mapped: {u_truths_mapped}")
+            truths_subset = truths[:9]
+    else:
+        truths_subset = None
 
+    # Extract Fisher uncertainties for plotting (if provided)
     if fisher_uncertainties_for_plotting is not None:
-        # Create temporary arrays for truth +/- sigma for detransformation    
-        theta_plus_sigma = np.array(truths_for_detransform)  # Start with full truths array
-        theta_minus_sigma = np.array(truths_for_detransform)
-        # Ignore the flux parametrs and (conditionally) LOM parameters
-        if self.LOM_enabled: 
-            theta_plus_sigma += np.array(fisher_uncertainties_for_plotting)[:12]
-            theta_minus_sigma -= np.array(fisher_uncertainties_for_plotting)[:12]
+        if self.LOM_enabled:
+            fisher_subset = fisher_uncertainties_for_plotting[:12]
         else:
-            theta_plus_sigma += np.array(fisher_uncertainties_for_plotting)[:9]
-            theta_minus_sigma -= np.array(fisher_uncertainties_for_plotting)[:9]
-
-        # Detransform these values to unit cube space
-        u_plus_sigma_mapped = self.detransform_theta(
-            theta_plus_sigma,
-            truths, # truths_array
-            prange_linear,
-            prange_log,
-            normal,
-            fisher_uncertainties_for_prior  # None if not using
-        )
-        
-        u_minus_sigma_mapped = self.detransform_theta(
-            theta_minus_sigma,
-            truths, # truths_array
-            prange_linear,
-            prange_log,
-            normal,
-            fisher_uncertainties_for_prior
-        )
-
-        print(f"u_plus_sigma_mapped: {u_plus_sigma_mapped}")
-        print(f"u_minus_sigma_mapped: {u_minus_sigma_mapped}")
-        print(f"theta_plus_sigma: {theta_plus_sigma}")
-        print(f"theta_minus_sigma: {theta_minus_sigma}")
+            fisher_subset = fisher_uncertainties_for_plotting[:9]
+    else:
+        fisher_subset = None
 
     if labels is None:
         labels = [f"theta[{i}]" for i in range(ndim)]
 
-    fig, axes = plt.subplots(ndim + 1, figsize=(10, 7), sharex=True)
-    for i in range(ndim):
-        ax = axes[i]
-        for j in range(nwalkers):
-            ax.plot(chain[j, :, i], "k", alpha=0.1)
-        ax.set_xlim(0, nsteps)
-        ax.set_ylabel(labels[i])
-        ax.set_ylim(-0.1, 1.1) # Expanded Y-axis limits
+    # Handle unit-cube vs physical space plotting
+    if is_unit_cube:
+        # Chain is in unit-cube space - use the existing logic
+        if truths_subset is not None:
+            # Detransform the truth values to unit cube space
+            u_truths_mapped = self.detransform_theta(
+                truths_subset, 
+                truths, 
+                prange_linear,
+                prange_log,
+                normal,
+                fisher_uncertainties_for_prior # USE THE CORRECT PRIOR DEFINITION
+            )
+            # do a sanity check that u_truths_mapped is an ndim-D array of ~0.5 values
+            if u_truths_mapped.shape[0] != ndim:
+                print(f"u_truths_mapped.shape: {u_truths_mapped.shape}")
+                print(f"ndim: {ndim}")
+                print(f'u_truths_mapped type: {type(u_truths_mapped)}')
+                raise ValueError("u_truths_mapped is not an ndim-D array")
+            if not np.allclose(u_truths_mapped, 0.5, atol=1e-6):
+                print("WARNING: u_truths_mapped is not close to an array of 0.5 values")
+                print(f"u_truths_mapped: {u_truths_mapped}")
+                print(f"Max deviation from 0.5: {np.max(np.abs(u_truths_mapped - 0.5))}")
 
-        # Add horizontal line for the truth (in unit cube space)
-        ax.axhline(u_truths_mapped[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth (Unit Cube)")
+        if fisher_subset is not None and truths_subset is not None:
+            # Create temporary arrays for truth +/- sigma for detransformation    
+            theta_plus_sigma = np.array(truths_subset) + np.array(fisher_subset)
+            theta_minus_sigma = np.array(truths_subset) - np.array(fisher_subset)
 
-        # Add horizontal dashed lines for 1-sigma uncertainties (in unit cube space)
-        if fisher_uncertainties_for_plotting is not None or fisher_uncertainties_for_prior is not None:
-            ax.axhline(u_plus_sigma_mapped[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7, label="Truth $\pm 1\sigma_{Fisher}$ (Unit Cube)")
-            ax.axhline(u_minus_sigma_mapped[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+            # Detransform these values to unit cube space
+            u_plus_sigma_mapped = self.detransform_theta(
+                theta_plus_sigma,
+                truths, # truths_array
+                prange_linear,
+                prange_log,
+                normal,
+                fisher_uncertainties_for_prior  # None if not using
+            )
             
-        # Add legend to the first subplot only to avoid clutter
-        if i == 0:
-            ax.legend(loc='best')
+            u_minus_sigma_mapped = self.detransform_theta(
+                theta_minus_sigma,
+                truths, # truths_array
+                prange_linear,
+                prange_log,
+                normal,
+                fisher_uncertainties_for_prior
+            )
+        else:
+            u_plus_sigma_mapped = None
+            u_minus_sigma_mapped = None
+
+        # Plot unit-cube chains
+        fig, axes = plt.subplots(ndim + 1, figsize=(10, 7), sharex=True)
+        for i in range(ndim):
+            ax = axes[i]
+            for j in range(nwalkers):
+                ax.plot(chain[j, :, i], "k", alpha=0.1)
+            ax.set_xlim(0, nsteps)
+            ax.set_ylabel(labels[i])
+            ax.set_ylim(-0.1, 1.1) # Unit cube limits
+
+            # Add horizontal line for the truth (in unit cube space)
+            if truths_subset is not None:
+                ax.axhline(u_truths_mapped[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth (Unit Cube)")
+
+            # Add horizontal dashed lines for 1-sigma uncertainties (in unit cube space)
+            if u_plus_sigma_mapped is not None:
+                ax.axhline(u_plus_sigma_mapped[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7, label="Truth $\pm 1\sigma_{Fisher}$ (Unit Cube)")
+                ax.axhline(u_minus_sigma_mapped[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                
+            # Add legend to the first subplot only to avoid clutter
+            if i == 0 and truths_subset is not None:
+                ax.legend(loc='best')
+
+    else:
+        # Chain is in physical space - plot directly
+        fig, axes = plt.subplots(ndim + 1, figsize=(10, 7), sharex=True)
+        for i in range(ndim):
+            ax = axes[i]
+            for j in range(nwalkers):
+                ax.plot(chain[j, :, i], "k", alpha=0.1)
+            ax.set_xlim(0, nsteps)
+            ax.set_ylabel(labels[i])
+            
+            # Set reasonable y-limits based on the data range
+            param_values = chain[:, :, i].flatten()
+            y_min, y_max = np.percentile(param_values, [1, 99])
+            y_range = y_max - y_min
+            ax.set_ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
+
+            # Add horizontal line for the truth (in physical space)
+            if truths_subset is not None:
+                ax.axhline(truths_subset[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth")
+
+            # Add horizontal dashed lines for 1-sigma uncertainties (in physical space)
+            if fisher_subset is not None and truths_subset is not None:
+                ax.axhline(truths_subset[i] + fisher_subset[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7, label="Truth $\pm 1\sigma_{Fisher}$")
+                ax.axhline(truths_subset[i] - fisher_subset[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                
+            # Add legend to the first subplot only to avoid clutter
+            if i == 0 and truths_subset is not None:
+                ax.legend(loc='best')
 
     ax = axes[-1]
     for j in range(nwalkers):

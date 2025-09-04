@@ -1,0 +1,63 @@
+event_truths:
+  EventID: 599.0
+  Field: 721.0
+  SubRun: 1.0
+  lcname: 5f_overguide_m40.out_1_721_599.det.lc
+  params:
+  - 19.36658264644
+  - 0.08247492479966
+  - 0.001743611701137
+  - -19.2214901077
+  - 1.5918587893196354
+  - 2459683.098926582
+  - 13.17412862299
+  - -0.03092962151323
+  - 3.162922205816e-05
+  - -0.35645120562164256
+  - 5.55806868697698
+  - 32402.717946235378
+model_config:
+  ndim: 9
+  parameter_labels:
+  - s
+  - q
+  - rho
+  - u0
+  - alpha
+  - t0
+  - tE
+  - piEE
+  - piEN
+  prange_linear:
+  - 0.2
+  - 0.1
+  - 1.0
+  - 10.0
+  - 10.0
+  prange_log:
+  - 0.2
+  - 1.0
+  - 1.0
+  - 0.2
+plotting_config:
+  plot_flags: icp
+  sort_method: alphanumeric
+run_info:
+  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 4 -noLOM -prior
+    normal -nbimin 1000 -nbimax 1000 -n 1500 -nstep 50 -f icp
+  event_name: '721_1_599'
+  start_time: Thu Sep  4 17:44:43 2025
+  start_timestamp: 1757022283.429328
+  working_directory: /Users/malpas.1/Code/GullsPosteriors
+sampling_config:
+  LOM_enabled: false
+  adaptive_burnin: false
+  burnin_max_steps: 1000
+  burnin_min_steps: 1000
+  burnin_stepi: 200
+  n_samples: 1500
+  n_step: 50
+  prior_type: normal
+  sampler: emcee
+  threads: 4
+  use_fisher_prior: false

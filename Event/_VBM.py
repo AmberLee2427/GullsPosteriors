@@ -25,7 +25,28 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36):
     -------
     ndarray
         Magnification for each value of ``ss``.
+    
+    Raises
+    ------
+    ValueError
+        If any parameter values are physically invalid.
     """
+    
+    # Parameter validation - catch stupid values before they hang VBM
+    if q <= 0 or q > 10:
+        raise ValueError(f"Mass ratio q={q} is invalid (must be 0 < q <= 10)")
+    
+    if rho <= 0 or rho > 1:
+        raise ValueError(f"Source radius rho={rho} is invalid (must be 0 < rho <= 1)")
+    
+    if np.any(ss <= 0) or np.any(ss > 100):
+        raise ValueError(f"Separation ss has invalid values (must be 0 < ss <= 100): min={np.min(ss)}, max={np.max(ss)}")
+    
+    if eps <= 0 or eps > 1e-2:
+        raise ValueError(f"Tolerance eps={eps} is invalid (must be 0 < eps <= 0.01)")
+    
+    if gamma < 0 or gamma > 1:
+        raise ValueError(f"Limb darkening gamma={gamma} is invalid (must be 0 <= gamma <= 1)")
 
     if self.mag_obj is None:
         self.mag_obj = VBMicrolensing.VBMicrolensing()

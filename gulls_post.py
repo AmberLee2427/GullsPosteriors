@@ -16,6 +16,7 @@ import argparse
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
+import yaml
 
 from Data import Data
 from Parallax import Parallax
@@ -26,23 +27,87 @@ from VBMicrolensing import VBMicrolensing
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description="Run posterior sampling on gull events")
-    p.add_argument("nevents", type=int, help="Number of events to process")
-    p.add_argument("path", help="Directory containing data challenge files")
-    p.add_argument("-s", dest="sampler", choices=["emcee", "dynesty"], default="emcee")
-    p.add_argument("-t", dest="threads", type=int, default=1, help="Number of threads (emcee)")
-    p.add_argument("-sort", dest="sort", default="alphanumeric")
-    p.add_argument("-noLOM", dest="no_lom", action="store_true", help="Disable lens orbit motion")
-    p.add_argument("-fp", dest="use_fisher_prior", action="store_true", help="Use Fisher uncertainties for priors")
-    p.add_argument("-adapt", dest="adaptive_burnin", action="store_true")
-    p.add_argument("-prior", dest="prior", choices=["normal", "uniform", "uniform-unit-cube", "normal-unit-cube"],
-                   help="Prior type")
-    p.add_argument("-n", dest="n_samples", type=int, default=1000)
-    p.add_argument("-nbimin", dest="burnin_min_steps", type=int, default=500)
-    p.add_argument("-nbimax", dest="burnin_max_steps", type=int, default=1000)
-    p.add_argument("-nbistep", dest="burnin_stepi", type=int, default=200)
-    p.add_argument("-nstep", dest="n_step", type=int, default=100)
-    p.add_argument("-f", dest="plots", default="ictpf", help="Plot flags: i(ni), c, t, p, f; use n to disable all")
+    p = argparse.ArgumentParser(
+        description="Run Bayesian posterior sampling on gravitational microlensing events",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic EMCEE run on 5 events with default settings
+  python gulls_post.py 5 Fisher_overguide_m40/
+  
+  # High-resolution run with frequent checkpoints and all plots
+  python gulls_post.py 3 FishVBM_Therr_m20/ -s emcee -t 8 -n 5000 -nstep 25 -f ictpf
+  
+  # Dynesty nested sampling with Fisher-informed priors
+  python gulls_post.py 1 Fisher_overguide_m40/ -s dynesty -fp -prior normal-unit-cube
+  
+  # Fast test run with minimal plots
+  python gulls_post.py 1 Fisher_overguide_m40/ -n 100 -nstep 10 -f ic
+
+Plot flags (-f):
+  i = initial diagnostic plots (lightcurve, caustic)
+  c = chain/trace plots during sampling  
+  t = trace plots (dynesty)
+  p = posterior corner plots
+  f = final model overlay plots
+  n = disable all plots
+  
+Samplers:
+  emcee   = Ensemble MCMC sampler (default)
+  dynesty = Nested sampling
+  
+Prior types:
+  normal           = Normal priors in physical space (default for emcee)
+  uniform          = Uniform priors in physical space  
+  normal-unit-cube = Normal priors in unit cube (default for dynesty)
+  uniform-unit-cube= Uniform priors in unit cube
+        """)
+
+    # Required arguments
+    p.add_argument("nevents", type=int, 
+                   help="Number of events to process from the dataset")
+    p.add_argument("path", 
+                   help="Directory containing data challenge files (.lc, .hdf5)")
+
+    # Sampling configuration
+    sampling_group = p.add_argument_group("Sampling Configuration")
+    sampling_group.add_argument("-s", dest="sampler", choices=["emcee", "dynesty"], 
+                               default="emcee", help="Sampling algorithm (default: emcee)")
+    sampling_group.add_argument("-t", dest="threads", type=int, default=1, 
+                               help="Number of parallel threads for emcee (default: 1)")
+    sampling_group.add_argument("-n", dest="n_samples", type=int, default=1000,
+                               help="Number of posterior samples to collect (default: 1000)")
+    sampling_group.add_argument("-nstep", dest="n_step", type=int, default=100,
+                               help="Steps between checkpoints/plots (default: 100)")
+
+    # Burn-in configuration  
+    burnin_group = p.add_argument_group("Burn-in Configuration")
+    burnin_group.add_argument("-adapt", dest="adaptive_burnin", action="store_true",
+                             help="Enable adaptive burn-in with prior expansion")
+    burnin_group.add_argument("-nbimin", dest="burnin_min_steps", type=int, default=500,
+                             help="Minimum burn-in steps (default: 500)")
+    burnin_group.add_argument("-nbimax", dest="burnin_max_steps", type=int, default=1000,
+                             help="Maximum burn-in steps (default: 1000)")
+    burnin_group.add_argument("-nbistep", dest="burnin_stepi", type=int, default=200,
+                             help="Steps between burn-in checkpoints (default: 200)")
+
+    # Model configuration
+    model_group = p.add_argument_group("Model Configuration") 
+    model_group.add_argument("-noLOM", dest="no_lom", action="store_true",
+                            help="Disable lens orbital motion (LOM) parameters")
+    model_group.add_argument("-prior", dest="prior", 
+                            choices=["normal", "uniform", "uniform-unit-cube", "normal-unit-cube"],
+                            help="Prior distribution type (auto-selected by sampler if not specified)")
+    model_group.add_argument("-fp", dest="use_fisher_prior", action="store_true",
+                            help="Use Fisher matrix uncertainties to inform prior widths")
+
+    # Output configuration
+    output_group = p.add_argument_group("Output Configuration")
+    output_group.add_argument("-f", dest="plots", default="ictpf",
+                             help="Plot flags: i,c,t,p,f or n for none (default: ictpf)")
+    output_group.add_argument("-sort", dest="sort", default="alphanumeric",
+                             help="Event sorting method (default: alphanumeric)")
+
     return p.parse_args(argv)
 
 
@@ -107,6 +172,85 @@ def choose_prior_type(args):
     return "normal"
 
 
+def save_run_parameters(args, event_name, path, truths, ndim, labels, 
+                        prange_linear, prange_log, prior_type, start_time):
+    """Save sampling run parameters to a .prm file in YAML format.
+    
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command line arguments
+    event_name : str
+        Name of the current event
+    path : str
+        Output directory path
+    truths : dict
+        Event truth parameters
+    ndim : int
+        Number of model dimensions
+    labels : list
+        Parameter labels
+    prange_linear : array_like
+        Linear prior ranges
+    prange_log : array_like
+        Log prior ranges  
+    prior_type : str
+        Type of prior used
+    start_time : float
+        Run start timestamp
+    """ 
+    # Build parameter dictionary
+    run_params = {
+        'run_info': {
+            'event_name': event_name,
+            'start_time': time.ctime(start_time),
+            'start_timestamp': start_time,
+            'command_line': ' '.join(sys.argv),
+            'working_directory': os.getcwd(),
+        },
+        'sampling_config': {
+            'sampler': args.sampler,
+            'threads': args.threads,
+            'n_samples': args.n_samples,
+            'n_step': args.n_step,
+            'adaptive_burnin': args.adaptive_burnin,
+            'burnin_min_steps': args.burnin_min_steps,
+            'burnin_max_steps': args.burnin_max_steps,
+            'burnin_stepi': args.burnin_stepi,
+            'prior_type': prior_type,
+            'use_fisher_prior': args.use_fisher_prior,
+            'LOM_enabled': not args.no_lom,
+        },
+        'model_config': {
+            'ndim': ndim,
+            'parameter_labels': labels,
+            'prange_linear': prange_linear.tolist() if hasattr(prange_linear, 'tolist') else list(prange_linear),
+            'prange_log': prange_log.tolist() if hasattr(prange_log, 'tolist') else list(prange_log),
+        },
+        'plotting_config': {
+            'plot_flags': args.plots,
+            'sort_method': args.sort,
+        },
+        'event_truths': {
+            # Save key truth parameters (avoid massive arrays)
+            'EventID': truths.get('EventID'),
+            'Field': truths.get('Field'),
+            'SubRun': truths.get('SubRun'),
+            'lcname': truths.get('lcname'),
+            'params': truths['params'].tolist() if hasattr(truths.get('params'), 'tolist') else truths.get('params'),
+        }
+    }
+    
+    # Save to .prm file
+    prm_filename = path + f"posteriors/{event_name}_sampling.prm"
+    try:
+        with open(prm_filename, 'w') as f:
+            yaml.dump(run_params, f, default_flow_style=False, indent=2)
+        print(f"Saved sampling parameters to {prm_filename}")
+    except Exception as e:
+        raise Exception("YAML saving failed") from e
+
+
 def build_plot_titles(LOM_enabled):
     if LOM_enabled:
         ts = ("s=%.2f, q=%.6f, rho=%.6f, u0=%.2f, alpha=%.2f, t0=%.2f, "
@@ -138,11 +282,12 @@ def run(args):
 
     prior_type = choose_prior_type(args)
 
-    plot_initial, plot_chain, plot_post, plot_trace, plot_run, plot_final = derive_plot_flags(args)
+    plot_initial, plot_chains, plot_post, plot_trace, plot_run, plot_final = derive_plot_flags(args)
 
     # Objects
     orbit_obj = Orbit()
     fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels)
+    fit_obj.plot_chains = plot_chains
     vbm = VBMicrolensing(); vbm.a1 = 0.36
 
     if not os.path.exists(path + "posteriors/"):
@@ -208,6 +353,80 @@ def run(args):
         tref_list = [truths["t0lens1"], truths["tcroin"], tc_calc]
         fit_tref = tref_list[int(np.argmin(chi2_list))]
 
+        # ------------------------------------------------------------------
+        # INITIAL FIGURES (restored from legacy script) BEFORE CROPPING
+        # ------------------------------------------------------------------
+        if plot_initial:
+            try:
+                fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+                base_colours = ["orange", "red", "green", "purple", "cyan", "magenta", "brown", "olive"]
+                default_labels = {0: "W146", 1: "Z087", 2: "K213"}
+                ordered_obs = sorted(list(data.keys()))
+                colour_map = {obs: base_colours[i % len(base_colours)] for i, obs in enumerate(ordered_obs)}
+                label_map = {obs: default_labels.get(obs, f"Obs{obs}") for obs in ordered_obs}
+                tt = np.linspace(tmin, tmax, 4000)
+
+                for obs in ordered_obs:
+                    A = event_t0.get_magnification(t_data[obs], obs)
+                    fs_obs, fb_obs = fit_obj.get_fluxes(A, f_true[obs], f_err_true[obs] ** 2)
+                    ax1.plot(t_data[obs], (f_true[obs] - fb_obs) / fs_obs, '.', color=colour_map[obs],
+                             label=label_map[obs], alpha=0.5, zorder=0)
+                    residuals = f_true[obs] - (A * fs_obs + fb_obs)
+                    ax2.plot(t_data[obs], residuals, '.', color=colour_map[obs], alpha=0.5, zorder=0)
+
+                # Models at t0, tc, and calculated tref
+                ax1.plot(tt, event_tc.get_magnification(tt, 0), '-', color='cyan', label=f"$t_c$={event_tc.t_ref:.1f}", lw=1, alpha=0.75)
+                ax1.plot(tt, event_t0.get_magnification(tt, 0), '-', color='blue', label=f"$t_0$={event_t0.t_ref:.1f}", lw=1, alpha=0.75)
+                ax1.plot(tt, event_tref.get_magnification(tt, 0), '-', color='purple', label=f"$t_c,calc$={event_tref.t_ref:.1f}", lw=1, alpha=0.75)
+                ax1.axvline(x=fit_tref, color='orange', linestyle='-', alpha=0.25, zorder=0, linewidth=4)
+
+                ax1.set_xlim(tmin, tmax)
+                ax1.set_ylabel('Magnification')
+                title_str = build_plot_titles(LOM_enabled)
+                ax1.set_title(title_str % tuple(truths['params'][:ndim]))
+                ax1.legend()
+                ax2.set_ylabel('Residuals (true flux - model)')
+                ax2.set_xlabel('BJD')
+                fig.tight_layout()
+                plt.savefig(path + f"posteriors/{event_name}_truths_lightcurve.png", dpi=200)
+                plt.close(fig)
+
+                # Caustic plot
+                fig = plt.figure()
+                # For LOM disabled, phase/incl/period indices don't exist beyond ndim
+                if LOM_enabled:
+                    inc = truths['params'][9]; phase = truths['params'][10]; period = truths['params'][11]
+                else:
+                    # Provide placeholders for separation projection (use existing params)
+                    inc = 0.0; phase = 0.0; period = 1.0
+                try:
+                    s_tc, _, _ = event_tref.projected_separation(inc, period, truths['tcroin'], phase_offset=phase,
+                                                                 t_start=truths['tcroin'], a=truths.get('Planet_semimajoraxis', 1.0) / truths.get('rE', 1.0))
+                    caustics_tc = vbm.Caustics(s_tc, truths['params'][1])
+                    for closed in caustics_tc:
+                        plt.plot(closed[0], closed[1], '-', color='cyan', ms=0.2, alpha=0.5)
+                except Exception:
+                    pass
+                plt.plot(event_tref.lens1_0[0], event_tref.lens1_0[1], 'o', ms=6, color='red')
+                plt.plot(event_tref.lens2_0[0], event_tref.lens2_0[1], 'o', ms=6, color='red')
+                if LOM_enabled:
+                    plt.plot(event_tref.traj_parallax_dalpha_u1[0], event_tref.traj_parallax_dalpha_u2[0], '-', color='cyan', alpha=0.5)
+                plt.grid(); plt.axis('equal')
+                plt.savefig(path + f"posteriors/{event_name}_truths_caustic.png", dpi=200)
+                plt.close(fig)
+
+                # Optional LOM diagnostics
+                if LOM_enabled:
+                    try:
+                        plt.figure(); plt.plot(event_tref.tau[0], event_tref.ss[0], '.', alpha=0.1)
+                        plt.xlabel(r"$\\tau$"); plt.ylabel('s'); plt.savefig(path + f"posteriors/{event_name}_dsdtau.png"); plt.close()
+                        plt.figure(); plt.plot(event_tref.tau[0], event_tref.dalpha[0], '.', alpha=0.1)
+                        plt.xlabel(r"$\\tau$"); plt.ylabel(r'd$\\alpha$'); plt.savefig(path + f"posteriors/{event_name}_dalphadtau.png"); plt.close()
+                    except Exception:
+                        pass
+            except Exception as e:  # noqa: BLE001
+                print(f"Warning: initial plotting failed for {event_name}: {e}")
+
         # Crop data around event
         t0_win, tE_win = truths["params"][5], truths["params"][6]
         tmin_fit = min(t0_win - 1.5 * tE_win, tc_calc - 1.5 * tE_win)
@@ -219,6 +438,10 @@ def run(args):
             data_cropped[obs_key] = data[obs_key].T[pts].T
 
         event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=LOM_enabled)
+
+        # Save sampling parameters to .prm file before starting
+        save_run_parameters(args, event_name, path, truths, ndim, labels, 
+                           prange_linear, prange_log, prior_type, start_time)
 
         # Sampler setup
         print(f"\nSampling Posterior using {args.sampler}")
@@ -279,11 +502,12 @@ def run(args):
 
         # Final plots (optional)
         if plot_post:
-            flat_chain_post = sampler.get_chain(flat=True) if args.sampler == "emcee" else sampler.results.samples
-            samples_for_corner = (fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
-                                    normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
-                                  if "unit-cube" in prior_type else flat_chain_post)
-            log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]
+            if plot_chain:
+                flat_chain_post = sampler.get_chain(flat=True) if args.sampler == "emcee" else sampler.results.samples
+                samples_for_corner = (fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
+                                        normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
+                                    if "unit-cube" in prior_type else flat_chain_post)
+            log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]   
             fit_obj.corner_post(samples_for_corner, event_name, path, truths,
                                 fisher_covariance=fit_obj.fisher_covariance_for_plotting,
                                 fisher_uncertainties=fit_obj.fisher_uncertainties_for_plotting,

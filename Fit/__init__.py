@@ -327,8 +327,8 @@ class Fit:
             else:
                 return -np.inf
 
-    # MODIFIED: lnprob to use self.LOM_enabled and accept additional arguments
-    def lnprob(self, theta, event, truths, prange_linear, prange_log, normal, fisher_uncertainties_for_prior=None):
+    # MODIFIED: lnprob to use self.LOM_enabled
+    def lnprob(self, theta, event):
         """Calculate the log-posterior probability.
 
         Parameters
@@ -337,16 +337,6 @@ class Fit:
             Parameter vector to evaluate.
         event : Event
             Microlensing event providing data and magnification model.
-        truths : dict
-            Dictionary of reference parameter values (not used in lnprob, kept for compatibility).
-        prange_linear : array_like
-            Linear prior widths (not used in lnprob, kept for compatibility).
-        prange_log : array_like
-            Logarithmic prior widths (not used in lnprob, kept for compatibility).
-        normal : bool
-            Normal prior flag (not used in lnprob, kept for compatibility).
-        fisher_uncertainties_for_prior : array_like or None
-            Fisher uncertainties for priors (not used in lnprob, kept for compatibility).
 
         Returns
         -------
