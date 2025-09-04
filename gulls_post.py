@@ -288,9 +288,9 @@ def run(args):
                                 fisher_covariance=fit_obj.fisher_covariance_for_plotting,
                                 fisher_uncertainties=fit_obj.fisher_uncertainties_for_plotting,
                                 log_param_names=log_param_names)
-        if plot_trace and hasattr(fit_obj, 'traceplot'):
+        if plot_trace and hasattr(fit_obj, 'traceplot') and args.sampler == "dynesty":
             fit_obj.traceplot(sampler, event_name, path, truths)
-        if plot_run and hasattr(fit_obj, 'runplot'):
+        if plot_run and hasattr(fit_obj, 'runplot') and args.sampler == "dynesty":
             fit_obj.runplot(sampler, event_name, path)
 
         print(f"Event {i} ({event_name}) is done")
