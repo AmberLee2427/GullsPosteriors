@@ -423,11 +423,13 @@ class Data:
         
         # Find the first data line (not starting with #)
         data_line = None
+        skip_rows = 1
         for line in lines:
             if not line.startswith('#'):
                 data_line = line
                 break
-        
+            skip_rows += 1
+
         if data_line is None:
             raise ValueError(f"Could not find data line in {data_file}")
         
@@ -446,7 +448,7 @@ class Data:
             print(f"Warning: File has {actual_columns} columns, expected up to {len(expected_columns)}")
 
         data = pd.read_csv(
-            data_file, sep=r"\s+", skiprows=12, names=header
+            data_file, sep=r"\s+", skiprows=skip_rows, names=header
         )  # delim_whitespace=True is the same as sep=r'\s+', but older.
         # The 'r' in sep=r'\s+' means raw string, which is not necessary.
         # Otherwise you get annoying warnings.
@@ -581,6 +583,51 @@ class Data:
 
         return data_dict
 
+    def _read_master_file(self, master_file):
+        """Read master file, supporting both CSV and HDF5 formats."""
+        if master_file.endswith(('.hdf5', '.h5')):
+            print(f"Reading HDF5 master file: {master_file}")
+            
+            # Try pandas first (works well for properly formatted HDF5)
+            try:
+                master = pd.read_hdf(master_file)
+                print(f"Successfully read HDF5 file with pandas, shape: {master.shape}")
+                print(f"Columns include: {master.columns[:10].tolist()}...")
+                return master
+            except Exception as pandas_error:
+                print(f"pandas read_hdf failed: {pandas_error}")
+                
+            # Fall back to manual h5py reading if pandas fails
+            try:
+                import h5py
+                with h5py.File(master_file, 'r') as hdf:
+                    print(f"HDF5 file keys: {list(hdf.keys())}")
+                    
+                    # Use the first available dataset
+                    data_key = list(hdf.keys())[0]
+                    print(f"Using dataset key: {data_key}")
+                    
+                    dataset = hdf[data_key]
+                    
+                    # Convert to pandas DataFrame
+                    if hasattr(dataset, 'dtype') and dataset.dtype.names:
+                        # Structured array
+                        data_dict = {name: dataset[name][:] for name in dataset.dtype.names}
+                        master = pd.DataFrame(data_dict)
+                    else:
+                        raise ValueError(f"HDF5 dataset format not supported: {type(dataset)}")
+                    
+                    print(f"Successfully read HDF5 file manually, shape: {master.shape}")
+                    return master
+                    
+            except ImportError:
+                raise ImportError("h5py package is required to read HDF5 files. Install with: pip install h5py")
+            except Exception as e:
+                raise ValueError(f"Failed to read HDF5 file {master_file}: {e}")
+        else:
+            # Read CSV/text file
+            return pd.read_csv(master_file, header=0, sep=r'[,    \s]+', engine='python')
+
     def get_params(
         self, master_file, event_id, sub_run, field, epoch=None, bjd=None
     ):
@@ -622,8 +669,8 @@ class Data:
         sub_run = int(sub_run)
         field = int(field)
 
-        # Robustly read master file with any whitespace or comma delimiter
-        master = pd.read_csv(master_file, header=0, sep=r'[,    \s]+', engine='python')
+        # Read master file using the new helper method
+        master = self._read_master_file(master_file)
         # print(master.head())
 
         truths = master[
