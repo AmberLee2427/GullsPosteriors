@@ -16,9 +16,9 @@ packages and a few run scripts that drive end‑to‑end fits.
 - **Orbit** – uses JPL Horizons to fetch observatory ephemerides.
 - **Parallax** – converts observatory positions into north/east coordinates and
   provides parallax shifts.
-- **Scripts and notebooks** – utilities such as
-  `gulls_post_emcee_bound_w_pt.py` run the full modelling workflow. Sample
-  notebooks illustrate analyses.
+- **Scripts and notebooks** – utilities such as `gulls_post.py` run the full 
+  modelling workflow with a modern command-line interface. Sample notebooks 
+  illustrate analyses and provide interactive exploration tools.
 
 ## Installing
 
@@ -40,14 +40,38 @@ Key dependencies include Python 3.8, `emcee`, `dynesty` and the external
 
 ## Example usage
 
-The `gulls_post_emcee_bound_w_pt.py` script accepts the number of events to
-process and optional flags for sampler and threads, e.g.
+The `gulls_post.py` script provides a clean command-line interface for running
+posterior sampling on microlensing events. Basic usage:
 
 ```bash
-python gulls_post_emcee_bound_w_pt.py 1 -s emcee -t 4
+# Run sampling on 1 event using emcee with 4 threads
+python gulls_post.py 1 /path/to/data -s emcee -t 4
+
+# Run with Fisher-informed priors
+python gulls_post.py 1 /path/to/data -s emcee -fp
+
+# Run with dynesty sampler
+python gulls_post.py 1 /path/to/data -s dynesty
+
+# Run with adaptive burn-in (emcee only)
+python gulls_post.py 5 /path/to/data -s emcee -adapt
+
+# Control plots: i=initial, c=chain, t=trace, p=posterior, f=final
+python gulls_post.py 1 /path/to/data -f cp  # only chain and posterior plots
+python gulls_post.py 1 /path/to/data -f n   # no plots
 ```
 
-Plots and posterior samples are saved in the working directory.
+**Key Options:**
+- `-s, --sampler`: Choose `emcee` or `dynesty` (default: emcee)
+- `-t, --threads`: Number of threads for emcee (default: 1)
+- `-fp`: Use Fisher uncertainties to inform prior ranges
+- `-adapt`: Enable adaptive burn-in for emcee
+- `-noLOM`: Disable lens orbit motion (9 vs 12 parameters)
+- `-prior`: Specify prior type (normal, uniform, normal-unit-cube, uniform-unit-cube)
+- `-n`: Number of samples (default: 1000)
+- `-f`: Plot control flags
+
+Plots and posterior samples are saved in the `posteriors/` subdirectory.
 
 ## Learning more
 
