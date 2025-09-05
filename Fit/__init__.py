@@ -426,17 +426,21 @@ class Fit:
         
         # Define which parameter names are log-transformed
         log_param_names_base = ["s", "q", "rho", "tE"]
+        log_param_names = (
+            log_param_names_base + ["period"] if self.LOM_enabled else log_param_names_base
+        )
 
-        # Complete the log_param_names logic
-        if self.LOM_enabled:
-            log_param_names = log_param_names_base + ["period"]
-        else:
-            log_param_names = log_param_names_base
+        # Determine indices to exponentiate by matching labels to the above names.
+        # This keeps the mapping robust if parameter order changes or subsets are used.
+        full_labels_list = [
+            "s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"
+        ]
+        current_labels = self.labels if self.labels is not None else full_labels_list[: len(theta)]
+        log_indices = [i for i, label in enumerate(current_labels) if label in log_param_names]
 
-        # Apply log transformation to the relevant parameters
-        for i, name in enumerate(log_param_names):
-            if name in log_param_names:
-                params[i] = 10**(params[i])
+        # Apply log10 -> linear transform only to those indices
+        for i in log_indices:
+            params[i] = 10 ** (params[i])
 
         if self.LOM_enabled:
             params[4] %= 2 * np.pi  # alpha
