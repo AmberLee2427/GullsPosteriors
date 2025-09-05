@@ -333,16 +333,21 @@ class Fit:
                     
                     # Add Gaussian prior on negative blend flux
                     if self.normal and not self.unit_cube:
+                        lp = 0.0
                         if fb < 0:
                             # Allow small negative values but penalize large ones
-                            return -0.5 * (fb / self.sigma_fb)**2
+                            lp += -0.5 * (fb / self.sigma_fb)**2
+                            print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
                         if q > 1:  # gently disuade primary swapping
-                            return -0.5 * ((q - 1) / self.sigma_q)**2
+                            lp += -0.5 * ((q - 1) / self.sigma_q)**2
+                            print(f"q: {q}, sigma_q: {self.sigma_q}, lp: {lp}")
                         if rho > 1:  # gently disuade unphysically large sources
-                            return -0.5 * ((rho - 1) / self.sigma_rho)**2
+                            lp += -0.5 * ((rho - 1) / self.sigma_rho)**2
+                            print(f"rho: {rho}, sigma_rho: {self.sigma_rho}, lp: {lp}")
                         if s > 10:  # gently disuade very wide binaries
-                            return -0.5 * ((s - 10) / self.sigma_s)**2
-                return 0.0
+                            lp += -0.5 * ((s - 10) / self.sigma_s)**2
+                            print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
+                return lp
             else:
                 return -np.inf
         else:  # No LOM
@@ -361,16 +366,21 @@ class Fit:
                     
                     # Add Gaussian prior on negative blend flux
                     if self.normal and not self.unit_cube:
+                        lp = 0.0
                         if fb < 0:
                             # Allow small negative values but penalize large ones
-                            return -0.5 * (fb / self.sigma_fb)**2
+                            lp += -0.5 * (fb / self.sigma_fb)**2
+                            print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
                         if q > 1:  # gently disuade primary swapping
-                            return -0.5 * ((q - 1) / self.sigma_q)**2
+                            lp += -0.5 * ((q - 1) / self.sigma_q)**2
+                            print(f"q: {q}, sigma_q: {self.sigma_q}, lp: {lp}")
                         if rho > 1:  # gently disuade unphysically large sources
-                            return -0.5 * ((rho - 1) / self.sigma_rho)**2
+                            lp += -0.5 * ((rho - 1) / self.sigma_rho)**2
+                            print(f"rho: {rho}, sigma_rho: {self.sigma_rho}, lp: {lp}")
                         if s > 10:  # gently disuade very wide binaries
-                            return -0.5 * ((s - 10) / self.sigma_s)**2
-                return 0.0
+                            lp += -0.5 * ((s - 10) / self.sigma_s)**2
+                            print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
+                return lp
             else:
                 return -np.inf
 
