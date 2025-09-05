@@ -173,7 +173,7 @@ def choose_prior_type(args):
 
 
 def save_run_parameters(args, event_name, path, truths, ndim, labels, 
-                        prange_linear, prange_log, prior_type, start_time):
+                        prange_linear, prange_log, prior_type, start_time, fit_obj):
     """Save sampling run parameters to a .prm file in YAML format.
     
     Parameters
@@ -196,8 +196,8 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
         Log prior ranges  
     prior_type : str
         Type of prior used
-    start_time : float
-        Run start timestamp
+    fit_obj : Fit object
+        Fit object containing sigma parameters for priors and prior type.
     """ 
     # Build parameter dictionary
     run_params = {
@@ -226,6 +226,17 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
             'parameter_labels': labels,
             'prange_linear': prange_linear.tolist() if hasattr(prange_linear, 'tolist') else list(prange_linear),
             'prange_log': prange_log.tolist() if hasattr(prange_log, 'tolist') else list(prange_log),
+        },
+        'prior_type': {
+            'normal': fit_obj.normal,
+            'unit_cube': fit_obj.unit_cube
+        },
+        'prior_config': {
+            # Save sigma parameters for normal priors
+            'sigma_fb': fit_obj.sigma_fb if fit_obj.normal and fit_obj.unit_cube else None,
+            'sigma_rho': fit_obj.sigma_rho if fit_obj.normal and fit_obj.unit_cube else None,
+            'sigma_q': fit_obj.sigma_q if fit_obj.normal and fit_obj.unit_cube else None,
+            'sigma_s': fit_obj.sigma_s if fit_obj.normal and fit_obj.unit_cube else None,
         },
         'plotting_config': {
             'plot_flags': args.plots,
@@ -286,7 +297,10 @@ def run(args):
 
     # Objects
     orbit_obj = Orbit()
-    fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels)
+    normal = "normal" in prior_type
+    unit_cube = "unit-cube" in prior_type
+
+    fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels, normal=normal, unit_cube=unit_cube)
     fit_obj.plot_chains = plot_chains
     vbm = VBMicrolensing(); vbm.a1 = 0.36
 
@@ -440,8 +454,10 @@ def run(args):
         event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=LOM_enabled)
 
         # Save sampling parameters to .prm file before starting
+        # add normal and unit_cube to the fit object init
+
         save_run_parameters(args, event_name, path, truths, ndim, labels, 
-                           prange_linear, prange_log, prior_type, start_time)
+                           prange_linear, prange_log, prior_type, start_time, fit_obj)
 
         # Sampler setup
         print(f"\nSampling Posterior using {args.sampler}")
@@ -450,18 +466,28 @@ def run(args):
 
         if args.sampler == "emcee":
             # Decide lnp and initial positions
-            if "unit-cube" in prior_type:
+            if fit_obj.unit_cube:
                 lnp = fit_obj.lnprob_transform
                 initial_pos = np.ones((nl, ndim)) * 0.5 + 1e-10 * np.random.rand(nl, ndim)
             else:
                 lnp = fit_obj.lnprob
+                # lnprob expects log-transformed parameters for s, q, rho, tE (and period if LOM)
                 initial_pos = np.tile(truths["params"][:ndim], (nl, 1))
                 log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
+                
+                # Transform log parameters to log space
+                for j in log_indices:
+                    if j < initial_pos.shape[1]:  # Safety check
+                        initial_pos[:, j] = np.log10(initial_pos[:, j])
+                
+                # Add scatter in the appropriate space
                 scatter = 1e-4
                 for j in range(ndim):
                     if j in log_indices:
-                        initial_pos[:, j] *= 10 ** (scatter * np.random.randn(nl))
+                        # Scatter in log space (additive)
+                        initial_pos[:, j] += scatter * np.random.randn(nl)
                     else:
+                        # Scatter in linear space (additive) 
                         initial_pos[:, j] += scatter * (p_unc[j] if j < len(p_unc) else 1.0) * np.random.randn(nl)
 
             if adaptive_burnin:
@@ -490,7 +516,7 @@ def run(args):
             flat_chain = sampler.results.samples
 
         # Convert to physical space if needed
-        if "unit-cube" in prior_type:
+        if fit_obj.unit_cube:
             samples_phys = fit_obj.prior_transform(flat_chain, truths["params"][:ndim], prange_linear, prange_log,
                                                    normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
         else:
@@ -502,11 +528,22 @@ def run(args):
 
         # Final plots (optional)
         if plot_post:
-            if plot_chain:
+            if plot_chains:
                 flat_chain_post = sampler.get_chain(flat=True) if args.sampler == "emcee" else sampler.results.samples
-                samples_for_corner = (fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
-                                        normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
-                                    if "unit-cube" in prior_type else flat_chain_post)
+
+                if fit_obj.unit_cube:
+                    # Unit-cube case: transform from unit-cube to physical space
+                    samples_for_corner = fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
+                                            normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
+                else:
+                    # Regular case: chain is in log space for some parameters, need to transform to physical space
+                    samples_for_corner = flat_chain_post.copy()
+                    log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
+                    
+                    # Transform log parameters back to linear space
+                    for j in log_indices:
+                        if j < samples_for_corner.shape[1]:  # Safety check
+                            samples_for_corner[:, j] = 10**(samples_for_corner[:, j])
             log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]   
             fit_obj.corner_post(samples_for_corner, event_name, path, truths,
                                 fisher_covariance=fit_obj.fisher_covariance_for_plotting,

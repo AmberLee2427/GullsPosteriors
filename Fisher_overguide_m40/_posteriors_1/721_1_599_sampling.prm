@@ -1,21 +1,21 @@
 event_truths:
-  EventID: 311.0
+  EventID: 599.0
   Field: 721.0
   SubRun: 1.0
-  lcname: 5f_overguide_m40.out_1_721_311.det.lc
+  lcname: 5f_overguide_m40.out_1_721_599.det.lc
   params:
-  - 13.46563589022
-  - 0.2022643250552
-  - 0.0008075115368169
-  - 6.404398605703
-  - 5.754399359567473
-  - 2458372.996044877
-  - 15.93746229678
-  - 0.09802996352546
-  - 0.003984148241133
-  - -1.1742627377393113
-  - 3.5778567004729087
-  - 50807.97688036612
+  - 19.36658264644
+  - 0.08247492479966
+  - 0.001743611701137
+  - -19.2214901077
+  - 1.5918587893196354
+  - 2459683.098926582
+  - 13.17412862299
+  - -0.03092962151323
+  - 3.162922205816e-05
+  - -0.35645120562164256
+  - 5.55806868697698
+  - 32402.717946235378
 model_config:
   ndim: 9
   parameter_labels:
@@ -43,11 +43,11 @@ plotting_config:
   plot_flags: icp
   sort_method: alphanumeric
 run_info:
-  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
+  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 4 -noLOM -prior
     normal -nbimin 1000 -nbimax 1000 -n 1500 -nstep 50 -f icp
-  event_name: '721_1_311'
-  start_time: Fri Sep  5 09:53:13 2025
-  start_timestamp: 1757080393.518251
+  event_name: '721_1_599'
+  start_time: Thu Sep  4 18:10:47 2025
+  start_timestamp: 1757023847.662116
   working_directory: /Users/malpas.1/Code/GullsPosteriors
 sampling_config:
   LOM_enabled: false
@@ -59,5 +59,5 @@ sampling_config:
   n_step: 50
   prior_type: normal
   sampler: emcee
-  threads: 6
+  threads: 4
   use_fisher_prior: false

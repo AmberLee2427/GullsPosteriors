@@ -63,6 +63,11 @@ class Fit:
         labels=None,
         show_progress=False,
         sigma_fb=50.0,
+        sigma_rho=0.1,
+        sigma_q=0.1,
+        sigma_s=10.0,
+        normal=True,
+        unit_cube=False
     ):
         """Initialise a sampler wrapper.
 
@@ -101,8 +106,17 @@ class Fit:
             The current microlensing event being fitted.
         sigma_fb : float
             Standard deviation for the Gaussian prior on negative blend flux.
+        sigma_rho : float
+            Standard deviation for the Gaussian prior on rho.
+        sigma_q : float
+            Standard deviation for the Gaussian prior on q.
+        sigma_s : float
+            Standard deviation for the Gaussian prior on s.
+        normal : bool
+            If ``True``, use normal priors (default).
+        unit_cube : bool
+            If ``True``, sample in the unit cube (for dynesty).
         """
-
         if debug is not None:
             self.debug = debug
         else:
@@ -119,6 +133,11 @@ class Fit:
         self.show_progress = show_progress  # NEW: Store show_progress
         self.current_event = None  # NEW: Store current event
         self.sigma_fb = sigma_fb  # NEW: Store sigma_fb
+        self.sigma_rho = sigma_rho  # NEW: Store sigma_rho
+        self.sigma_q = sigma_q  # NEW: Store sigma_q
+        self.sigma_s = sigma_s  # NEW: Store sigma_s
+        self.normal = normal  # NEW: Store normal
+        self.unit_cube = unit_cube  # NEW: Store unit_cube
 
     def get_fluxes(self, model: np.ndarray, f: np.ndarray, sig2: np.ndarray):
         """Solve for the source and blend fluxes.
@@ -151,11 +170,20 @@ class Fit:
             print("debug Fit.get_fluxes: f and sig2 have different lengths")
             sys.exit()
 
+        # Check for pathological magnification values
+        if np.all(model == 0) or np.any(~np.isfinite(model)):
+            raise ValueError(f"Invalid magnification model: all zeros or contains non-finite values. Model range: [{np.min(model)}, {np.max(model)}]")
+
         # A
         A11 = np.sum(model**2 / sig2)
         Adiag = np.sum(model / sig2)
         A22 = np.sum(1.0 / sig2)
         A = np.array([[A11, Adiag], [Adiag, A22]])
+
+        # Check for singular matrix before solving
+        det_A = A[0,0] * A[1,1] - A[0,1] * A[1,0]
+        if abs(det_A) < 1e-15:
+            raise ValueError(f"Singular flux fitting matrix. Determinant: {det_A}, A11: {A11}, A22: {A22}, Adiag: {Adiag}")
 
         # C
         C1 = np.sum((f * model) / sig2)
@@ -262,22 +290,26 @@ class Fit:
         return -0.5 * chi2
 
     # MODIFIED: lnprior to use self.LOM_enabled
-    def lnprior(self, theta, bound_penalty=False):
+    def lnprior(self, theta, event=None):
         """Evaluate the log-prior probability.
 
         Parameters
         ----------
         theta : array_like
             Parameter vector to evaluate.
-        bound_penalty : bool, optional
-            Maintained for backward compatibility and currently unused.
+        event : Event or None, optional
+            Microlensing event containing data and model information.
 
         Returns
         -------
         float
             Log-prior probability or ``-np.inf`` if outside bounds.
         """
-
+        if self.current_event is not None:
+            current_event = self.current_event
+        if event is not None:  # If event is provided use that as priority
+            current_event = event
+            
         if self.LOM_enabled:
             s, q, rho, u0, alpha, t0, tE, piEE, piEN, i, phase, period = theta
             if "ln_prior" in self.debug:
@@ -289,19 +321,27 @@ class Fit:
                 and s > 0.001
                 and rho > 0.0
             ):
+                    
                 # Only check blend flux if we have a current event
-                if self.current_event is not None:
+                if current_event is not None:
                     # Get blend flux for this parameter set
-                    t = self.current_event.data[list(self.current_event.data.keys())[0]][0]  # Get times from first observatory
-                    A = self.current_event.get_magnification(t, list(self.current_event.data.keys())[0])
-                    f = self.current_event.data[list(self.current_event.data.keys())[0]][1]  # Get fluxes
-                    f_err = self.current_event.data[list(self.current_event.data.keys())[0]][2]  # Get errors
+                    t = current_event.data[list(current_event.data.keys())[0]][0]  # Get times from first observatory
+                    A = current_event.get_magnification(t, list(current_event.data.keys())[0])
+                    f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
+                    f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
                     _, fb = self.get_fluxes(A, f, f_err**2)
                     
                     # Add Gaussian prior on negative blend flux
-                    if fb < 0:
-                        # Allow small negative values but penalize large ones
-                        return -0.5 * (fb / self.sigma_fb)**2
+                    if self.normal and not self.unit_cube:
+                        if fb < 0:
+                            # Allow small negative values but penalize large ones
+                            return -0.5 * (fb / self.sigma_fb)**2
+                        if q > 1:  # gently disuade primary swapping
+                            return -0.5 * ((q - 1) / self.sigma_q)**2
+                        if rho > 1:  # gently disuade unphysically large sources
+                            return -0.5 * ((rho - 1) / self.sigma_rho)**2
+                        if s > 10:  # gently disuade very wide binaries
+                            return -0.5 * ((s - 10) / self.sigma_s)**2
                 return 0.0
             else:
                 return -np.inf
@@ -309,20 +349,27 @@ class Fit:
             s, q, rho, u0, alpha, t0, tE, piEE, piEN = theta
             if "ln_prior" in self.debug:
                 print("debug Fit.lnprior (No LOM):", theta)
-            if tE > 0.0 and q <= 1.0 and s > 0.001 and rho > 0.0:
+            if tE > 0.0 and q <= 1.0 and q > 0.0 and s > 0.001 and rho > 0.0:
                 # Only check blend flux if we have a current event
-                if self.current_event is not None:
+                if current_event is not None:
                     # Get blend flux for this parameter set
-                    t = self.current_event.data[list(self.current_event.data.keys())[0]][0]  # Get times from first observatory
-                    A = self.current_event.get_magnification(t, list(self.current_event.data.keys())[0])
-                    f = self.current_event.data[list(self.current_event.data.keys())[0]][1]  # Get fluxes
-                    f_err = self.current_event.data[list(self.current_event.data.keys())[0]][2]  # Get errors
+                    t = current_event.data[list(current_event.data.keys())[0]][0]  # Get times from first observatory
+                    A = current_event.get_magnification(t, list(current_event.data.keys())[0])
+                    f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
+                    f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
                     _, fb = self.get_fluxes(A, f, f_err**2)
                     
                     # Add Gaussian prior on negative blend flux
-                    if fb < 0:
-                        # Allow small negative values but penalize large ones
-                        return -0.5 * (fb / self.sigma_fb)**2
+                    if self.normal and not self.unit_cube:
+                        if fb < 0:
+                            # Allow small negative values but penalize large ones
+                            return -0.5 * (fb / self.sigma_fb)**2
+                        if q > 1:  # gently disuade primary swapping
+                            return -0.5 * ((q - 1) / self.sigma_q)**2
+                        if rho > 1:  # gently disuade unphysically large sources
+                            return -0.5 * ((rho - 1) / self.sigma_rho)**2
+                        if s > 10:  # gently disuade very wide binaries
+                            return -0.5 * ((s - 10) / self.sigma_s)**2
                 return 0.0
             else:
                 return -np.inf
@@ -343,28 +390,45 @@ class Fit:
         float
             Sum of log-prior and log-likelihood values.
         """
+        # make a copy of theta, so that it doesn't get inadvertedly edited in the case where it is a list
+        params = theta.copy()
+        
+        # Define which parameter names are log-transformed
+        log_param_names_base = ["s", "q", "rho", "tE"]
+
+        # Complete the log_param_names logic
         if self.LOM_enabled:
-            theta[4] %= 2 * np.pi  # alpha
-            theta[10] %= 2 * np.pi  # phase
+            log_param_names = log_param_names_base + ["period"]
+        else:
+            log_param_names = log_param_names_base
+
+        # Apply log transformation to the relevant parameters
+        for i, name in enumerate(log_param_names):
+            if name in log_param_names:
+                params[i] = 10**(params[i])
+
+        if self.LOM_enabled:
+            params[4] %= 2 * np.pi  # alpha
+            params[10] %= 2 * np.pi  # phase
             # For inclination 'i', it's usually 0 to pi. If it's 0 to 2pi in
             # your setup, this is fine.
-            # Otherwise, you might need theta[9] = np.abs(theta[9] % np.pi) or
+            # Otherwise, you might need params[9] = np.abs(params[9] % np.pi) or
             # similar.
-            theta[9] %= 2 * np.pi  # i
+            params[9] %= 2 * np.pi  # i
 
         else:
-            theta[4] %= 2 * np.pi  # alpha
+            params[4] %= 2 * np.pi  # alpha
 
-        lp = self.lnprior(theta)
+        lp = self.lnprior(params, event)
         if not np.isfinite(lp):
             return -np.inf
 
-        ll = self.lnlike(theta, event)
+        ll = self.lnlike(params, event)
         if not np.isfinite(ll):
             return -np.inf
 
         if "lnprob" in self.debug:
             print("debug Fit.lnprob: lp, ll: ", lp, ll)
-            print("                  ", theta)
+            print("                  ", params)
 
         return lp + ll
