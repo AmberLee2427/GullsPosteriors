@@ -9,8 +9,12 @@ Run with:
 or
     python tests/test_dynesty_transform.py
 """
+import os
+import sys
 import numpy as np
 import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from Fit import Fit
 
 # Example parameter setup (9D, no LOM)
@@ -19,8 +23,10 @@ ndim = len(labels)
 
 # Truth values (arbitrary but reasonable)
 truths = np.array([1.2, 0.01, 0.001, 0.1, 1.0, 2450000.0, 30.0, 0.0, 0.0])
-prange_log = np.array([1.0, 2.0, 2.0])  # log10 width for s, q, rho (e.g., 10^(log_true +/- 0.5))
-prange_linear = np.array([0.2, np.pi, 100.0, 100.0, 100.0, 100.0])  # for u0, alpha, t0, tE, piEE, piEN
+# log10 width for s, q, rho, tE (e.g., 10^(log_true +/- 0.5))
+prange_log = np.array([1.0, 2.0, 2.0, 2.0])
+# for u0, alpha, t0, piEE, piEN
+prange_linear = np.array([0.2, np.pi, 100.0, 100.0, 100.0])
 
 # Define realistic 1-sigma Fisher uncertainties for testing
 # These should be small, representative uncertainties, not prior widths.

@@ -337,6 +337,7 @@ class Fit:
             if (
                 tE > 0.0
                 and q <= 1.0
+                and q > 0.0
                 and period / tE > 4
                 and s > 0.001
                 and rho > 0.0
