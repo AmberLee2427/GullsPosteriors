@@ -172,7 +172,15 @@ class Fit:
 
         # Check for pathological magnification values
         if np.all(model == 0) or np.any(~np.isfinite(model)):
-            raise ValueError(f"Invalid magnification model: all zeros or contains non-finite values. Model range: [{np.min(model)}, {np.max(model)}]")
+            if "fluxes" in self.debug:
+                print(f"debug Fit.get_fluxes: Invalid magnification (NaN/inf/zero), returning default fluxes. Model range: [{np.min(model) if np.isfinite(np.min(model)) else 'NaN'}, {np.max(model) if np.isfinite(np.max(model)) else 'NaN'}]")
+            return 1.0, np.mean(f) if np.isfinite(np.mean(f)) else 0.0  # Return safe default values
+        
+        # Check for constant magnification (no lensing effect)
+        if np.all(np.abs(model - 1.0) < 1e-12):
+            if "fluxes" in self.debug:
+                print("debug Fit.get_fluxes: Constant magnification ~1.0, returning default fluxes")
+            return 1.0, np.mean(f)  # FS=1 (no magnification), FB=mean flux
 
         # A
         A11 = np.sum(model**2 / sig2)
@@ -183,7 +191,11 @@ class Fit:
         # Check for singular matrix before solving
         det_A = A[0,0] * A[1,1] - A[0,1] * A[1,0]
         if abs(det_A) < 1e-15:
-            raise ValueError(f"Singular flux fitting matrix. Determinant: {det_A}, A11: {A11}, A22: {A22}, Adiag: {Adiag}")
+            # Return default flux values for singular matrix (no lensing case)
+            # This typically happens when magnification model is ~1.0 everywhere
+            if "fluxes" in self.debug:
+                print(f"debug Fit.get_fluxes: Singular matrix (det={det_A}), returning default fluxes")
+            return 1.0, np.mean(f)  # FS=1 (no magnification), FB=mean flux
 
         # C
         C1 = np.sum((f * model) / sig2)
@@ -247,6 +259,8 @@ class Fit:
                 f_err = event.data[obs][6]  # true_rel_flux_err
 
             A = event.get_magnification(t, obs)
+            if A is None:
+                return None, np.inf
             fs, fb = self.get_fluxes(A, f, f_err**2)
 
             chi2[obs] = ((f - (A * fs + fb)) / f_err) ** 2
@@ -282,6 +296,12 @@ class Fit:
             The log-likelihood value.
         """
         _, chi2 = self.get_chi2(event, theta)
+
+        # Safety check for bad chi2 values
+        if not np.isfinite(chi2) or chi2 < 0:
+            if "lnlike" in self.debug:
+                print(f"debug Fit.lnlike: Bad chi2 value {chi2}, returning -inf")
+            return -np.inf
 
         if "lnlike" in self.debug:
             print("debug Fit.lnlike: chi2: ", chi2)
@@ -377,9 +397,10 @@ class Fit:
                         if rho > 1:  # gently disuade unphysically large sources
                             lp += -0.5 * ((rho - 1) / self.sigma_rho)**2
                             print(f"rho: {rho}, sigma_rho: {self.sigma_rho}, lp: {lp}")
-                        if s > 10:  # gently disuade very wide binaries
+                        if s > 20:  # gently disuade very wide binaries
                             lp += -0.5 * ((s - 10) / self.sigma_s)**2
-                            print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
+                            if s > 50:  # don't bother me with a. shit tone of prints
+                                print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
                 return lp
             else:
                 return -np.inf
@@ -433,7 +454,11 @@ class Fit:
         if not np.isfinite(lp):
             return -np.inf
 
-        ll = self.lnlike(params, event)
+        if lp < -50:  # prior is 10 sigma disfavoured for being physically unreasonable
+            print("debug Fit.lnprob: lp < -50, returning -np.inf")
+            return -np.inf
+        else: # don't call the likelihood if prior is too low
+            ll = self.lnlike(params, event)
         if not np.isfinite(ll):
             return -np.inf
 

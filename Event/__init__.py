@@ -650,6 +650,11 @@ class Event:
             ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
         )
 
+        # Handle timeout/failure from VBMicrolensing
+        if A is None:
+            print("Warning: Magnification calculation failed or timed out, returning NaN array")
+            return np.full_like(ss, np.nan)
+
         # vbbl has CoM O
 
         # ss is an array that accounts for changing s due to OM

@@ -528,22 +528,23 @@ def run(args):
 
         # Final plots (optional)
         if plot_post:
-            if plot_chains:
-                flat_chain_post = sampler.get_chain(flat=True) if args.sampler == "emcee" else sampler.results.samples
+            # Prepare samples for corner plot regardless of plot_chains setting
+            flat_chain_post = sampler.get_chain(flat=True) if args.sampler == "emcee" else sampler.results.samples
 
-                if fit_obj.unit_cube:
-                    # Unit-cube case: transform from unit-cube to physical space
-                    samples_for_corner = fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
-                                            normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
-                else:
-                    # Regular case: chain is in log space for some parameters, need to transform to physical space
-                    samples_for_corner = flat_chain_post.copy()
-                    log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
-                    
-                    # Transform log parameters back to linear space
-                    for j in log_indices:
-                        if j < samples_for_corner.shape[1]:  # Safety check
-                            samples_for_corner[:, j] = 10**(samples_for_corner[:, j])
+            if fit_obj.unit_cube:
+                # Unit-cube case: transform from unit-cube to physical space
+                samples_for_corner = fit_obj.prior_transform(flat_chain_post, truths["params"][:ndim], prange_linear, prange_log,
+                                        normal=normal, fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
+            else:
+                # Regular case: chain is in log space for some parameters, need to transform to physical space
+                samples_for_corner = flat_chain_post.copy()
+                log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
+                
+                # Transform log parameters back to linear space
+                for j in log_indices:
+                    if j < samples_for_corner.shape[1]:  # Safety check
+                        samples_for_corner[:, j] = 10**(samples_for_corner[:, j])
+            
             log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]   
             fit_obj.corner_post(samples_for_corner, event_name, path, truths,
                                 fisher_covariance=fit_obj.fisher_covariance_for_plotting,
@@ -553,6 +554,147 @@ def run(args):
             fit_obj.traceplot(sampler, event_name, path, truths)
         if plot_run and hasattr(fit_obj, 'runplot') and args.sampler == "dynesty":
             fit_obj.runplot(sampler, event_name, path)
+
+        # Final lightcurve plots with posterior samples
+        if plot_final:
+            try:
+                print("Generating final lightcurve plots with posterior samples...")
+                
+                # Get samples in physical space (already computed above)
+                if args.sampler == "emcee":
+                    # Remove burn-in from chain
+                    burnin_remove = max(100, args.burnin_min_steps // 2)  # Remove at least some burn-in
+                    chain_no_burnin = sampler.get_chain(discard=burnin_remove, flat=True)
+                    
+                    print(f"Debug: chain_no_burnin shape: {chain_no_burnin.shape}")
+                    
+                    if chain_no_burnin.size == 0:
+                        print("Warning: No samples after burn-in removal, skipping final plots")
+                        continue
+                    
+                    if fit_obj.unit_cube:
+                        samples_final = fit_obj.prior_transform(chain_no_burnin, truths["params"][:ndim], 
+                                                               prange_linear, prange_log, normal=normal, 
+                                                               fisher_uncertainties=fit_obj.fisher_uncertainties_for_prior)
+                    else:
+                        samples_final = chain_no_burnin.copy()
+                        log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
+                        
+                        # Transform log parameters back to linear space
+                        for j in log_indices:
+                            if j < samples_final.shape[1]:
+                                samples_final[:, j] = 10**(samples_final[:, j])
+                else:
+                    # Dynesty samples are already in physical space
+                    samples_final = samples_phys
+                
+                print(f"Debug: samples_final shape: {samples_final.shape}")
+                
+                if samples_final.size == 0:
+                    print("Warning: No final samples available, skipping final plots")
+                    raise ValueError("No samples for plotting")
+                
+                # Get 50th percentile sample
+                median_params = np.percentile(samples_final, 50, axis=0)
+                print(f"Debug: median_params shape: {median_params.shape}")
+                
+                # Select some random samples for transparent overlay (5-10 samples)
+                n_samples_plot = min(10, len(samples_final))
+                if n_samples_plot > 0:
+                    random_indices = np.random.choice(len(samples_final), n_samples_plot, replace=False)
+                    random_samples = samples_final[random_indices]
+                    print(f"Debug: selected {len(random_samples)} random samples")
+                else:
+                    random_samples = []
+                    print("Debug: no random samples selected")
+                    raise ValueError("No samples available for plotting")
+                
+                # Create the final lightcurve plot
+                fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+                base_colours = ["orange", "red", "green", "purple", "cyan", "magenta", "brown", "olive"]
+                default_labels = {0: "W146", 1: "Z087", 2: "K213"}
+                ordered_obs = sorted(list(data_cropped.keys()))
+                colour_map = {obs: base_colours[i % len(base_colours)] for i, obs in enumerate(ordered_obs)}
+                label_map = {obs: default_labels.get(obs, f"Obs{obs}") for obs in ordered_obs}
+                
+                # Plot data
+                for obs in ordered_obs:
+                    t_obs = data_cropped[obs][0, :]
+                    f_obs = data_cropped[obs][5, :]
+                    ferr_obs = data_cropped[obs][6, :]
+                    
+                    # Get magnification for median parameters
+                    temp_params = median_params.copy()
+                    if LOM_enabled and len(temp_params) >= 12:
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                    else:
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                    
+                    # Update event with median parameters
+                    temp_event.set_params(temp_params)
+                    A_median = temp_event.get_magnification(t_obs, obs)
+                    fs_median, fb_median = fit_obj.get_fluxes(A_median, f_obs, ferr_obs ** 2)
+                    
+                    # Plot data as magnification
+                    ax1.errorbar(t_obs, (f_obs - fb_median) / fs_median, yerr=ferr_obs / fs_median, 
+                               fmt='.', color=colour_map[obs], label=label_map[obs], alpha=0.7, zorder=2)
+                    
+                    # Plot residuals
+                    model_flux_median = A_median * fs_median + fb_median
+                    residuals = f_obs - model_flux_median
+                    ax2.errorbar(t_obs, residuals, yerr=ferr_obs, fmt='.', color=colour_map[obs], alpha=0.7, zorder=2)
+                
+                # Plot models - create fine time grid
+                t_fine = np.linspace(tmin_fit, tmax_fit, 2000)
+                
+                # Median model
+                if LOM_enabled and len(median_params) >= 12:
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                else:
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                temp_event.set_params(median_params)
+                A_fine_median = temp_event.get_magnification(t_fine, 0)
+                ax1.plot(t_fine, A_fine_median, '-', color='black', linewidth=2, label='Median posterior', zorder=3)
+                
+                # Random posterior samples (transparent)
+                for j, sample_params in enumerate(random_samples):
+                    if LOM_enabled and len(sample_params) >= 12:
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                    else:
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                    temp_event.set_params(sample_params)
+                    A_fine_sample = temp_event.get_magnification(t_fine, 0)
+                    label_str = 'Posterior samples' if j == 0 else None
+                    ax1.plot(t_fine, A_fine_sample, '-', color='gray', alpha=0.2, linewidth=1, 
+                            label=label_str, zorder=1)
+                
+                # Truth model for comparison
+                if LOM_enabled and len(truths["params"]) >= 12:
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                else:
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                temp_event.set_params(truths["params"][:ndim])
+                A_fine_truth = temp_event.get_magnification(t_fine, 0)
+                ax1.plot(t_fine, A_fine_truth, '--', color='green', linewidth=2, label='Truth', zorder=3)
+                
+                ax1.set_ylabel('Magnification')
+                ax1.set_title(f'Final Lightcurve Fit - {event_name}')
+                ax1.legend(loc='best')
+                ax1.grid(True, alpha=0.3)
+                
+                ax2.set_ylabel('Residuals')
+                ax2.set_xlabel('BJD')
+                ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+                ax2.grid(True, alpha=0.3)
+                
+                plt.tight_layout()
+                plt.savefig(path + f"posteriors/{event_name}_final_lightcurve.png", dpi=200, bbox_inches='tight')
+                plt.close(fig)
+                
+                print(f"Saved final lightcurve plot: {path}posteriors/{event_name}_final_lightcurve.png")
+                
+            except Exception as e:
+                print(f"Warning: final lightcurve plotting failed for {event_name}: {e}")
 
         print(f"Event {i} ({event_name}) is done")
         if not os.path.exists(path + "emcee_complete.txt"):

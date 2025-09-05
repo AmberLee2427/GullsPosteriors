@@ -40,24 +40,32 @@ model_config:
   - 1.0
   - 0.2
 plotting_config:
-  plot_flags: icp
+  plot_flags: if
   sort_method: alphanumeric
+prior_config:
+  sigma_fb: null
+  sigma_q: null
+  sigma_rho: null
+  sigma_s: null
+prior_type:
+  normal: true
+  unit_cube: false
 run_info:
-  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
-    normal -nbimin 1000 -nbimax 1000 -n 1500 -nstep 50 -f icp
+  command_line: gulls_post.py 1 Fisher_overguide_m40/ -s emcee -t 4 -noLOM -prior
+    normal -nbimin 10 -nbimax 10 -n 50 -nstep 10 -f if
   event_name: '721_1_311'
-  start_time: Fri Sep  5 09:53:13 2025
-  start_timestamp: 1757080393.518251
+  start_time: Fri Sep  5 15:28:02 2025
+  start_timestamp: 1757100482.1908522
   working_directory: /Users/malpas.1/Code/GullsPosteriors
 sampling_config:
   LOM_enabled: false
   adaptive_burnin: false
-  burnin_max_steps: 1000
-  burnin_min_steps: 1000
+  burnin_max_steps: 10
+  burnin_min_steps: 10
   burnin_stepi: 200
-  n_samples: 1500
-  n_step: 50
+  n_samples: 50
+  n_step: 10
   prior_type: normal
   sampler: emcee
-  threads: 6
+  threads: 4
   use_fisher_prior: false
