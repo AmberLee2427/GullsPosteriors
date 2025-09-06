@@ -43,23 +43,19 @@ plotting_config:
   plot_flags: icpf
   sort_method: alphanumeric
 prior_config:
-  sigma_fb: 50.0
-  sigma_logq: 0.5
-  sigma_logrho: 0.2
-  sigma_logs: 0.5
-  sigma_logtE: 0.1
-  sigma_piEE: 5.0
-  sigma_piEN: 5.0
-  sigma_t0: 0.5
+  sigma_fb: null
+  sigma_q: null
+  sigma_rho: null
+  sigma_s: null
 prior_type:
   normal: true
   unit_cube: false
 run_info:
-  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
-    normal -nbimin 1000 -nbimax 1000 -n 1000 -nstep 1000 -f icpf
+  command_line: gulls_post.py 1 Fisher_overguide_m40/ -s emcee -t 4 -noLOM -prior
+    normal -nbimin 1000 -nbimax 1000 -n 2000 -nstep 100 -f icpf
   event_name: '721_1_311'
-  start_time: Sat Sep  6 12:12:12 2025
-  start_timestamp: 1757175132.3685062
+  start_time: Fri Sep  5 18:35:43 2025
+  start_timestamp: 1757111743.4998531
   working_directory: /Users/malpas.1/Code/GullsPosteriors
 sampling_config:
   LOM_enabled: false
@@ -67,9 +63,9 @@ sampling_config:
   burnin_max_steps: 1000
   burnin_min_steps: 1000
   burnin_stepi: 200
-  n_samples: 1000
-  n_step: 1000
+  n_samples: 2000
+  n_step: 100
   prior_type: normal
   sampler: emcee
-  threads: 6
+  threads: 4
   use_fisher_prior: false

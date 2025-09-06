@@ -63,17 +63,18 @@ class Fit:
         labels=None,
         show_progress=False,
         sigma_fb=50.0,
-        sigma_logrho=0.1,
-        sigma_logq=0.1,
-        sigma_logs=10.0,
-        sigma_u0=0.1,
-        sigma_alpha=0.1,
-        sigma_t0=0.1,
+        sigma_logrho=0.2,
+        sigma_logq=0.5,
+        sigma_logs=0.5,
+        sigma_u0=0.5,
+        sigma_alpha=0.5,
+        sigma_t0=0.5,
         sigma_logtE=0.1,
-        sigma_piEE=0.1,
-        sigma_piEN=0.1,
+        sigma_piEE=5.0,
+        sigma_piEN=5.0,
         normal=True,
-        unit_cube=False
+        unit_cube=False,
+        true_params=None
     ):
         """Initialise a sampler wrapper.
 
@@ -150,6 +151,7 @@ class Fit:
         self.sigma_piEN = sigma_piEN  # NEW: Store sigma_piEN
         self.normal = normal  # NEW: Store normal
         self.unit_cube = unit_cube  # NEW: Store unit_cube
+        self.true_params = true_params  # NEW: Store true_params for Fisher priors
 
     def get_fluxes(self, model: np.ndarray, f: np.ndarray, sig2: np.ndarray):
         """Solve for the source and blend fluxes.
@@ -408,15 +410,15 @@ class Fit:
                         if fb < -5 * self.sigma_fb:
                             print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
 
-                    # normal prior about the truth
-                    if self.normal and not self.unit_cube:
+                    # normal prior about the truth (only if true_params is available)
+                    if self.normal and not self.unit_cube and self.true_params is not None:
                         lp += -0.5 * ((np.log10(s) - np.log10(self.true_params[0])) / self.sigma_logs)**2
                         lp += -0.5 * ((np.log10(q) - np.log10(self.true_params[1])) / self.sigma_logq)**2
                         lp += -0.5 * ((np.log10(rho) - np.log10(self.true_params[2])) / self.sigma_logrho)**2
                         lp += -0.5 * ((u0 - self.true_params[3]) / self.sigma_u0)**2
                         lp += -0.5 * ((alpha - self.true_params[4]) / self.sigma_alpha)**2
                         lp += -0.5 * ((t0 - self.true_params[5]) / self.sigma_t0)**2
-                        lp += -0.5 * ((np.log10(tE) - np.log10(self.true_params[6])) / self.sigma_tE)**2
+                        lp += -0.5 * ((np.log10(tE) - np.log10(self.true_params[6])) / self.sigma_logtE)**2
                         lp += -0.5 * ((piEE - self.true_params[7]) / self.sigma_piEE)**2
                         lp += -0.5 * ((piEN - self.true_params[8]) / self.sigma_piEN)**2
                     # Add Gaussian prior on negative blend flux

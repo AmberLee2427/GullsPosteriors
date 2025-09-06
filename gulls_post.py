@@ -327,6 +327,9 @@ def run(args):
         print("---------------------------------------")
         print("truths =", truths)
 
+        # Set true params for Fisher-informed priors
+        fit_obj.true_params = truths["params"][:ndim]
+
         # Fisher setup for plotting and/or priors
         fit_obj.fisher_uncertainties_for_prior = None
         fit_obj.fisher_uncertainties_for_plotting = None
