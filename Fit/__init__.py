@@ -63,9 +63,15 @@ class Fit:
         labels=None,
         show_progress=False,
         sigma_fb=50.0,
-        sigma_rho=0.1,
-        sigma_q=0.1,
-        sigma_s=10.0,
+        sigma_logrho=0.1,
+        sigma_logq=0.1,
+        sigma_logs=10.0,
+        sigma_u0=0.1,
+        sigma_alpha=0.1,
+        sigma_t0=0.1,
+        sigma_logtE=0.1,
+        sigma_piEE=0.1,
+        sigma_piEN=0.1,
         normal=True,
         unit_cube=False
     ):
@@ -133,9 +139,15 @@ class Fit:
         self.show_progress = show_progress  # NEW: Store show_progress
         self.current_event = None  # NEW: Store current event
         self.sigma_fb = sigma_fb  # NEW: Store sigma_fb
-        self.sigma_rho = sigma_rho  # NEW: Store sigma_rho
-        self.sigma_q = sigma_q  # NEW: Store sigma_q
-        self.sigma_s = sigma_s  # NEW: Store sigma_s
+        self.sigma_logrho = sigma_logrho  # NEW: Store sigma_logrho
+        self.sigma_logq = sigma_logq  # NEW: Store sigma_logq
+        self.sigma_logs = sigma_logs  # NEW: Store sigma_logs
+        self.sigma_u0 = sigma_u0  # NEW: Store sigma_u0
+        self.sigma_alpha = sigma_alpha  # NEW: Store sigma_alpha
+        self.sigma_t0 = sigma_t0  # NEW: Store sigma_t0
+        self.sigma_logtE = sigma_logtE  # NEW: Store sigma_logtE
+        self.sigma_piEE = sigma_piEE  # NEW: Store sigma_piEE
+        self.sigma_piEN = sigma_piEN  # NEW: Store sigma_piEN
         self.normal = normal  # NEW: Store normal
         self.unit_cube = unit_cube  # NEW: Store unit_cube
 
@@ -363,11 +375,15 @@ class Fit:
                             lp += -0.5 * ((q - 1) / self.sigma_q)**2
                             print(f"q: {q}, sigma_q: {self.sigma_q}, lp: {lp}")
                         if rho > 1:  # gently disuade unphysically large sources
-                            lp += -0.5 * ((rho - 1) / self.sigma_rho)**2
-                            print(f"rho: {rho}, sigma_rho: {self.sigma_rho}, lp: {lp}")
-                        if s > 10:  # gently disuade very wide binaries
-                            lp += -0.5 * ((s - 10) / self.sigma_s)**2
-                            print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
+                            # Apply penalty in log space since rho is sampled in log space
+                            log_rho_penalty = np.log10(rho)  # penalty starts when log10(rho) > 0 (rho > 1)
+                            lp += -0.5 * (log_rho_penalty / self.sigma_rho)**2
+                            print(f"rho: {rho}, log10(rho): {log_rho_penalty:.2f}, sigma_rho: {self.sigma_rho}, lp: {lp}")
+                        if s > 10:  # gently disuade very wide binaries  
+                            # Apply penalty in log space since s is sampled in log space
+                            log_s_penalty = np.log10(s) - 1  # penalty starts when log10(s) > 1 (s > 10)
+                            lp += -0.5 * (log_s_penalty / self.sigma_s)**2
+                            print(f"s: {s}, log10(s): {np.log10(s):.2f}, sigma_s: {self.sigma_s}, lp: {lp}")
                 return lp
             else:
                 return -np.inf
@@ -384,24 +400,41 @@ class Fit:
                     f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
                     f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
                     _, fb = self.get_fluxes(A, f, f_err**2)
-                    
-                    # Add Gaussian prior on negative blend flux
-                    if self.normal and not self.unit_cube:
-                        lp = 0.0
-                        if fb < 0:
-                            # Allow small negative values but penalize large ones
-                            lp += -0.5 * (fb / self.sigma_fb)**2
+                 
+                    lp = 0.0
+                    if fb < 0:
+                        # Allow small negative values but penalize large ones
+                        lp += -0.5 * (fb / self.sigma_fb)**2
+                        if fb < -5 * self.sigma_fb:
                             print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
+
+                    # normal prior about the truth
+                    if self.normal and not self.unit_cube:
+                        lp += -0.5 * ((np.log10(s) - np.log10(self.true_params[0])) / self.sigma_logs)**2
+                        lp += -0.5 * ((np.log10(q) - np.log10(self.true_params[1])) / self.sigma_logq)**2
+                        lp += -0.5 * ((np.log10(rho) - np.log10(self.true_params[2])) / self.sigma_logrho)**2
+                        lp += -0.5 * ((u0 - self.true_params[3]) / self.sigma_u0)**2
+                        lp += -0.5 * ((alpha - self.true_params[4]) / self.sigma_alpha)**2
+                        lp += -0.5 * ((t0 - self.true_params[5]) / self.sigma_t0)**2
+                        lp += -0.5 * ((np.log10(tE) - np.log10(self.true_params[6])) / self.sigma_tE)**2
+                        lp += -0.5 * ((piEE - self.true_params[7]) / self.sigma_piEE)**2
+                        lp += -0.5 * ((piEN - self.true_params[8]) / self.sigma_piEN)**2
+                    # Add Gaussian prior on negative blend flux
+                    elif not self.normal and not self.unit_cube:
                         if q > 1:  # gently disuade primary swapping
                             lp += -0.5 * ((q - 1) / self.sigma_q)**2
                             print(f"q: {q}, sigma_q: {self.sigma_q}, lp: {lp}")
                         if rho > 1:  # gently disuade unphysically large sources
-                            lp += -0.5 * ((rho - 1) / self.sigma_rho)**2
-                            print(f"rho: {rho}, sigma_rho: {self.sigma_rho}, lp: {lp}")
+                            # Apply penalty in log space since rho is sampled in log space
+                            log_rho_penalty = np.log10(rho)  # penalty starts when log10(rho) > 0 (rho > 1)
+                            lp += -0.5 * (log_rho_penalty / self.sigma_rho)**2
+                            print(f"rho: {rho}, log10(rho): {log_rho_penalty:.2f}, sigma_rho: {self.sigma_rho}, lp: {lp}")
                         if s > 20:  # gently disuade very wide binaries
-                            lp += -0.5 * ((s - 10) / self.sigma_s)**2
+                            # Apply penalty in log space since s is sampled in log space
+                            log_s_penalty = np.log10(s) - np.log10(20)  # penalty starts when log10(s) > log10(20)
+                            lp += -0.5 * (log_s_penalty / self.sigma_s)**2
                             if s > 50:  # don't bother me with a. shit tone of prints
-                                print(f"s: {s}, sigma_s: {self.sigma_s}, lp: {lp}")
+                                print(f"s: {s}, log10(s): {np.log10(s):.2f}, sigma_s: {self.sigma_s}, lp: {lp}")
                 return lp
             else:
                 return -np.inf

@@ -233,10 +233,14 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
         },
         'prior_config': {
             # Save sigma parameters for normal priors
-            'sigma_fb': fit_obj.sigma_fb if fit_obj.normal and fit_obj.unit_cube else None,
-            'sigma_rho': fit_obj.sigma_rho if fit_obj.normal and fit_obj.unit_cube else None,
-            'sigma_q': fit_obj.sigma_q if fit_obj.normal and fit_obj.unit_cube else None,
-            'sigma_s': fit_obj.sigma_s if fit_obj.normal and fit_obj.unit_cube else None,
+            'sigma_fb': fit_obj.sigma_fb,
+            'sigma_logrho': fit_obj.sigma_logrho if not fit_obj.unit_cube else None,
+            'sigma_logq': fit_obj.sigma_logq if not fit_obj.unit_cube else None,
+            'sigma_logs': fit_obj.sigma_logs if not fit_obj.unit_cube else None,
+            'sigma_t0': fit_obj.sigma_t0 if fit_obj.normal and not fit_obj.unit_cube else None,
+            'sigma_logtE': fit_obj.sigma_logtE if fit_obj.normal and not fit_obj.unit_cube else None,
+            'sigma_piEE': fit_obj.sigma_piEE if fit_obj.normal and not fit_obj.unit_cube else None,
+            'sigma_piEN': fit_obj.sigma_piEN if fit_obj.normal and not fit_obj.unit_cube else None
         },
         'plotting_config': {
             'plot_flags': args.plots,
