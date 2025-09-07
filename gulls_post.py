@@ -627,29 +627,44 @@ def run(args):
                 # Plot data
                 for obs in ordered_obs:
                     t_obs = data_cropped[obs][0, :]
-                    f_obs = data_cropped[obs][5, :]
-                    ferr_obs = data_cropped[obs][6, :]
+                    f_obs = data_cropped[obs][1, :]  # observed relative flux: F = fs*A + (1-fs)
+                    ferr_obs = data_cropped[obs][2, :]  # observed relative flux error
                     
-                    # Get magnification for median parameters
+                    # Convert relative flux to magnification using median model
+                    # F = fs*A + (1-fs), so A = (F - (1-fs)) / fs = (F - fb) / fs
                     temp_params = median_params.copy()
                     if LOM_enabled and len(temp_params) >= 12:
                         temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
                     else:
                         temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
                     
-                    # Update event with median parameters
                     temp_event.set_params(temp_params)
-                    A_median = temp_event.get_magnification(t_obs, obs)
-                    fs_median, fb_median = fit_obj.get_fluxes(A_median, f_obs, ferr_obs ** 2)
+                    A_model = temp_event.get_magnification(t_obs, obs)
                     
-                    # Plot data as magnification
-                    ax1.errorbar(t_obs, (f_obs - fb_median) / fs_median, yerr=ferr_obs / fs_median, 
-                               fmt='.', color=colour_map[obs], label=label_map[obs], alpha=0.7, zorder=2)
-                    
-                    # Plot residuals
-                    model_flux_median = A_median * fs_median + fb_median
-                    residuals = f_obs - model_flux_median
-                    ax2.errorbar(t_obs, residuals, yerr=ferr_obs, fmt='.', color=colour_map[obs], alpha=0.7, zorder=2)
+                    if A_model is not None:
+                        # Get fitted flux parameters: F = fs*A + fb
+                        fs, fb = fit_obj.get_fluxes(A_model, f_obs, ferr_obs**2)
+                        
+                        # Convert observed relative flux to magnification
+                        if fs > 1e-6:  # Avoid division by very small numbers
+                            A_obs = (f_obs - fb) / fs
+                            Aerr_obs = ferr_obs / fs  # Error propagation
+                        else:
+                            # Fallback if fs is too small (pure blend case)
+                            A_obs = f_obs
+                            Aerr_obs = ferr_obs
+                        
+                        # Plot converted magnification
+                        ax1.errorbar(t_obs, A_obs, yerr=Aerr_obs, 
+                                   fmt='.', color=colour_map[obs], label=label_map[obs], alpha=0.7, zorder=2)
+                        
+                        # Plot residuals (observed magnification - model magnification)
+                        residuals = A_obs - A_model
+                        ax2.errorbar(t_obs, residuals, yerr=Aerr_obs, fmt='.', color=colour_map[obs], alpha=0.7, zorder=2)
+                    else:
+                        # Fallback if magnification calculation fails
+                        ax1.errorbar(t_obs, f_obs, yerr=ferr_obs, 
+                                   fmt='.', color=colour_map[obs], label=label_map[obs], alpha=0.7, zorder=2)
                 
                 # Plot models - create fine time grid
                 t_fine = np.linspace(tmin_fit, tmax_fit, 2000)

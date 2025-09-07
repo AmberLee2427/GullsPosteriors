@@ -1,21 +1,21 @@
 event_truths:
-  EventID: 311.0
+  EventID: 321.0
   Field: 721.0
   SubRun: 1.0
-  lcname: 5f_overguide_m40.out_1_721_311.det.lc
+  lcname: 5f_overguide_m40.out_1_721_321.det.lc
   params:
-  - 13.46563589022
-  - 0.2022643250552
-  - 0.0008075115368169
-  - 6.404398605703
-  - 5.754399359567473
-  - 2458372.996044877
-  - 15.93746229678
-  - 0.09802996352546
-  - 0.003984148241133
-  - -1.1742627377393113
-  - 3.5778567004729087
-  - 50807.97688036612
+  - 1.192541361666
+  - 0.3079358020633
+  - 0.001965248673934
+  - 0.2115749529312
+  - 0.1976404431691937
+  - 2458780.6975661665
+  - 5.143038958721
+  - -0.03644100528156
+  - 0.08535696452681
+  - -1.1147925828612895
+  - 0.4329292196278834
+  - 1011.647774966328
 model_config:
   ndim: 9
   parameter_labels:
@@ -56,19 +56,19 @@ prior_type:
   unit_cube: false
 run_info:
   command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
-    normal -nbimin 1000 -nbimax 2000 -n 2000 -nstep 5000 -f icpf
-  event_name: '721_1_311'
-  start_time: Sun Sep  7 14:28:27 2025
-  start_timestamp: 1757269707.050839
+    normal -nbimin 1000 -nbimax 1000 -n 1000 -nstep 1000 -f icpf
+  event_name: '721_1_321'
+  start_time: Sat Sep  6 12:12:12 2025
+  start_timestamp: 1757175132.3685062
   working_directory: /Users/malpas.1/Code/GullsPosteriors
 sampling_config:
   LOM_enabled: false
   adaptive_burnin: false
-  burnin_max_steps: 2000
+  burnin_max_steps: 1000
   burnin_min_steps: 1000
   burnin_stepi: 200
-  n_samples: 2000
-  n_step: 5000
+  n_samples: 1000
+  n_step: 1000
   prior_type: normal
   sampler: emcee
   threads: 6
