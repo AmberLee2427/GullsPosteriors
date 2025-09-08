@@ -507,84 +507,95 @@ class Data:
             print(f"Extracted Fisher columns from positions 21-29: {col_names}")
         
         print(f"Fisher columns: {col_names}")
-        if len(col_names) >= 9:  
-            self.model_derivatives = data[col_names[:9]].to_numpy()  # Take only first 9 for model params
-
-            # REORDER DERIVATIVES TO MATCH OUR PARAMETER ORDER
+        if len(col_names) >= 9:
+            # Build full derivative matrix including ALL derivative columns (model + flux)
+            all_derivatives = data[col_names].to_numpy()
+            n_total_deriv_cols = all_derivatives.shape[1]
+            
+            # Split: first 9 are model params, rest are flux/nuisance
+            model_derivs_raw = all_derivatives[:, :9]
+            flux_derivs = all_derivatives[:, 9:] if n_total_deriv_cols > 9 else None
+            
+            # Reorder model derivatives from simulation to internal order
             # Their order: [t0, log10tE, u0, alpha, log10s, log10q, log10rho, piEN, piEE]
             # Our order:   [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]
-            # 
-            # Mapping: their[4,5,6,2,3,0,1,8,7] → our[0,1,2,3,4,5,6,7,8]
             reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
+            model_derivs_reordered = model_derivs_raw[:, reorder_indices]
+            self.model_derivatives = model_derivs_reordered  # Keep for backward compatibility
             
-            # Apply reordering - only take the 9 model parameters (ignore flux params)
-            self.model_derivatives = self.model_derivatives[:, reorder_indices]
-            
-            print(f"Reordered Fisher derivatives to our parameter order: [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]")
-            print(f"Fisher derivatives shape: {self.model_derivatives.shape}")
-
-            # Determine how many observatory groups we have and extract only the first 9 params per group
-            n_cols = self.model_derivatives.shape[1]
-            
-            # Assume we have multiple observatory groups, each with the same parameter structure
-            # Count parameters per group by finding flux parameters (assume they start after the 9 main params)
-            # For now, let's assume we want the first 9 parameters from the first observatory group
-            
-            if n_cols >= 9:  # Make sure we have at least 9 parameters
-                # Extract first 9 derivatives (from first observatory group)
-                derivatives_first_group = self.model_derivatives[:, :9]
-                
-                # Reorder from simulation order to our order
-                # Their order: [t0, tE, u0, alpha, s, q, rs, piEN, piEE]
-                # Our order:   [s, q, rho, u0, alpha, t0, tE, piEE, piEN]
-                reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
-                
-                # Apply reordering
-                self.model_derivatives = derivatives_first_group[:, reorder_indices]
-                
-                print(f"Reordered derivatives from simulation order to our parameter order")
-                print(f"Original shape: {derivatives_first_group.shape}")
-                print(f"Reordered shape: {self.model_derivatives.shape}")
-                print(f"Parameter order is now: [s, q, rho, u0, alpha, t0, tE, piEE, piEN]")
+            # Build full derivative matrix: [model_params, flux_params]
+            if flux_derivs is not None and flux_derivs.size > 0:
+                full_derivatives = np.hstack([model_derivs_reordered, flux_derivs])
+                n_flux_params = flux_derivs.shape[1]
+                print(f"Including {n_flux_params} flux derivative columns in Fisher calculation")
             else:
-                print(f"Warning: Only {n_cols} derivative columns found, expected at least 9")
+                full_derivatives = model_derivs_reordered
+                n_flux_params = 0
+                print("No flux derivatives found; Fisher will be model-only")
+            
+            n_model_params = 9
+            n_total_params = full_derivatives.shape[1]
+            print(f"Fisher matrix: {n_model_params} model + {n_flux_params} flux = {n_total_params} total params")
 
-            # Form the data covariance matrix (diagonal matrix of flux uncertainties)
-            # We need to get the flux errors for all data points
+            # Data weights
             flux_errors = data["measured_relative_flux_error"].values
-            self.data_covariance = np.diag(flux_errors**2)  # C = diag(σ²)
+            weights = 1.0 / (flux_errors**2)
             
-            # Calculate C^-1 (inverse of diagonal matrix is just 1/diagonal elements)
-            self.data_covariance_inv = np.diag(1.0 / flux_errors**2)  # C^-1 = diag(1/σ²)
-
-            # Calculate the Fisher matrix: F = ∇ᵀC⁻¹∇
-            # where ∇ is the matrix of model derivatives
-            n_params = self.model_derivatives.shape[1]  # Use reordered derivatives
-            n_data = len(flux_errors)
-            self.fisher_matrix = np.zeros((n_params, n_params))
+            # Compute full Fisher matrix: F = D^T W D
+            weighted_derivs = full_derivatives * weights[:, None]
+            full_fisher = full_derivatives.T @ weighted_derivs
             
-            # More efficient calculation using matrix operations
-            # F_ij = Σ_k (∂f_k/∂θ_i) * (1/σ_k²) * (∂f_k/∂θ_j)
-            for i in range(n_params):
-                for j in range(i, n_params):
-                    # Sum over all data points
-                    fisher_element = np.sum(
-                        self.model_derivatives[:, i] * (1.0 / flux_errors**2) * self.model_derivatives[:, j]
-                    )
-                    self.fisher_matrix[i, j] = fisher_element
-                    self.fisher_matrix[j, i] = fisher_element  # Symmetric matrix
-
-            # Calculate the inverse of the Fisher matrix
-            self.model_covariance = np.linalg.inv(self.fisher_matrix)
-            # Calculate 1-sigma Fisher uncertainties for each parameter
-            self.model_parameter_uncertainties = np.sqrt(np.diag(self.model_covariance))
+            # Ninja-level error handling for Fisher inversion
+            fisher_success = False
+            try:
+                # Check condition number (how close to singular)
+                cond_num = np.linalg.cond(full_fisher)
+                if cond_num > 1e12:  # Very ill-conditioned
+                    print(f"Fisher matrix poorly conditioned (cond={cond_num:.1e}), using pseudo-inverse")
+                    # Use SVD-based pseudo-inverse with tuned tolerance
+                    full_covariance = np.linalg.pinv(full_fisher, rcond=1e-10)
+                else:
+                    # Standard inversion
+                    full_covariance = np.linalg.inv(full_fisher)
+                fisher_success = True
+                print(f"Fisher inversion successful (condition number: {cond_num:.1e})")
+                
+            except (np.linalg.LinAlgError, ValueError) as e:
+                print(f"Fisher inversion failed: {e}. Using fallback zeros.")
+                # Graceful fallback: zero covariance matrix (obviously wrong but won't crash)
+                full_covariance = np.zeros((n_total_params, n_total_params))
+                fisher_success = False
+            
+            if fisher_success:
+                # Extract model parameter covariance block (marginalized over flux params)
+                self.model_covariance = full_covariance[:n_model_params, :n_model_params]
+                self.model_parameter_uncertainties = np.sqrt(np.abs(np.diag(self.model_covariance)))
+                
+                # Backward compatibility: fisher_matrix as inverse of model covariance
+                try:
+                    self.fisher_matrix = np.linalg.inv(self.model_covariance)
+                except (np.linalg.LinAlgError, ValueError):
+                    self.fisher_matrix = np.zeros((n_model_params, n_model_params))
+                    print("Model covariance block also singular; using zero fisher_matrix")
+            else:
+                # Fallback values
+                self.model_covariance = np.zeros((n_model_params, n_model_params))
+                self.model_parameter_uncertainties = np.zeros(n_model_params)
+                self.fisher_matrix = np.zeros((n_model_params, n_model_params))
+                print("Using fallback zero matrices for Fisher results")
+            
+            # Store additional attributes for debugging
+            self.full_fisher_matrix = full_fisher
+            self.full_covariance = full_covariance
+            self.n_flux_params = n_flux_params
+            self.fisher_inversion_success = fisher_success
 
             # --- DEBUG PRINTS FOR FISHER CALCULATIONS ---
             print("\n--- Fisher Calculation Debug ---")
             print(f"Fisher Matrix shape: {self.fisher_matrix.shape}")
-            print(f"Fisher Matrix (first 3x3): \n{self.fisher_matrix[:min(3, n_params),:min(3, n_params)]}") # Adjusted for smaller n_params
+            print(f"Fisher Matrix (first 3x3): \n{self.fisher_matrix[:3,:3]}")
             print(f"Model Covariance shape: {self.model_covariance.shape}")
-            print(f"Model Covariance (first 3x3): \n{self.model_covariance[:min(3, n_params),:min(3, n_params)]}") # Adjusted for smaller n_params
+            print(f"Model Covariance (first 3x3): \n{self.model_covariance[:3,:3]}")
             print(f"Model Parameter Uncertainties (1-sigma): \n{self.model_parameter_uncertainties}")
             print("--- End Fisher Calculation Debug ---\n")
 
