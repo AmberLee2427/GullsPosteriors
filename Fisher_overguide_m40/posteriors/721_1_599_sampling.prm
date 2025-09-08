@@ -1,21 +1,21 @@
 event_truths:
-  EventID: 321.0
+  EventID: 599.0
   Field: 721.0
   SubRun: 1.0
-  lcname: 5f_overguide_m40.out_1_721_321.det.lc
+  lcname: 5f_overguide_m40.out_1_721_599.det.lc
   params:
-  - 1.192541361666
-  - 0.3079358020633
-  - 0.001965248673934
-  - 0.2115749529312
-  - 0.1976404431691937
-  - 2458780.6975661665
-  - 5.143038958721
-  - -0.03644100528156
-  - 0.08535696452681
-  - -1.1147925828612895
-  - 0.4329292196278834
-  - 1011.647774966328
+  - 19.36658264644
+  - 0.08247492479966
+  - 0.001743611701137
+  - -19.2214901077
+  - 1.5918587893196354
+  - 2459683.098926582
+  - 13.17412862299
+  - -0.03092962151323
+  - 3.162922205816e-05
+  - -0.35645120562164256
+  - 5.55806868697698
+  - 32402.717946235378
 model_config:
   ndim: 9
   parameter_labels:
@@ -57,7 +57,7 @@ prior_type:
 run_info:
   command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
     normal -nbimin 1000 -nbimax 2000 -n 2000 -nstep 5000 -f icpf
-  event_name: '721_1_321'
+  event_name: '721_1_599'
   start_time: Sun Sep  7 14:28:27 2025
   start_timestamp: 1757269707.050839
   working_directory: /Users/malpas.1/Code/GullsPosteriors

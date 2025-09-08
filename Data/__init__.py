@@ -491,22 +491,38 @@ class Data:
             print(f"Warning: Non-essential columns missing in {data_file}: {missing_columns}")
             data = data[available_columns] # Proceed with available columns
 
-        # cov is any column name that starts with "dTheta"
+        # Fisher derivatives are in columns 21-29 (0-indexed: 20-28) for 40-column format
+        # Try to find dTheta columns first, then fall back to positional extraction
         col_names = [col for col in data.columns if col.startswith("dTheta")]
+        
+        # If no dTheta columns, try positional extraction for columns 21-29
+        if len(col_names) == 0 and len(data.columns) >= 29:
+            print("No dTheta columns found, extracting Fisher derivatives from columns 21-29...")
+            # Columns 21-29 in 1-indexed = columns 20-28 in 0-indexed
+            fisher_col_indices = list(range(20, 29))  # [20, 21, 22, 23, 24, 25, 26, 27, 28]
+            
+            # Get column names for these positions
+            all_col_names = list(data.columns)
+            col_names = [all_col_names[i] for i in fisher_col_indices if i < len(all_col_names)]
+            print(f"Extracted Fisher columns from positions 21-29: {col_names}")
+        
         print(f"Fisher columns: {col_names}")
-        if len(col_names) > 0:  
-            self.model_derivatives = data[col_names].to_numpy()
+        if len(col_names) >= 9:  
+            self.model_derivatives = data[col_names[:9]].to_numpy()  # Take only first 9 for model params
 
             # REORDER DERIVATIVES TO MATCH OUR PARAMETER ORDER
-            # Simulation team's order: [t0, tE, u0, alpha, s, q, rs, piEN, piEE, flux_params...]
-            # Our parameter order:     [s, q, rho, u0, alpha, t0, tE, piEE, piEN]
+            # Their order: [t0, log10tE, u0, alpha, log10s, log10q, log10rho, piEN, piEE]
+            # Our order:   [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]
             # 
-            # Mapping from their indices to our indices:
-            # Their: [0=t0, 1=tE, 2=u0, 3=alpha, 4=s, 5=q, 6=rs, 7=piEN, 8=piEE]
-            # Ours:  [0=s,  1=q,  2=rho, 3=u0,   4=alpha, 5=t0, 6=tE, 7=piEE, 8=piEN]
-            # 
-            # So reorder mapping: [4, 5, 6, 2, 3, 0, 1, 8, 7] (their indices → our order)
+            # Mapping: their[4,5,6,2,3,0,1,8,7] → our[0,1,2,3,4,5,6,7,8]
+            reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
             
+            # Apply reordering - only take the 9 model parameters (ignore flux params)
+            self.model_derivatives = self.model_derivatives[:, reorder_indices]
+            
+            print(f"Reordered Fisher derivatives to our parameter order: [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]")
+            print(f"Fisher derivatives shape: {self.model_derivatives.shape}")
+
             # Determine how many observatory groups we have and extract only the first 9 params per group
             n_cols = self.model_derivatives.shape[1]
             
