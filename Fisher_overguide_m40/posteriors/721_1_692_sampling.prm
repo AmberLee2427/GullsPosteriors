@@ -1,0 +1,75 @@
+event_truths:
+  EventID: 692.0
+  Field: 721.0
+  SubRun: 1.0
+  lcname: 5f_overguide_m40.out_1_721_692.det.lc
+  params:
+  - 0.7443207986528
+  - 0.3338426191623
+  - 0.0008891216285099
+  - 0.4363539541148
+  - 1.3967421256073036
+  - 2458545.7927579875
+  - 19.48771748158
+  - -0.1839856409257
+  - 0.02818061126868
+  - -0.9829249037420124
+  - 4.730231803302678
+  - 2680.2625758636473
+model_config:
+  ndim: 9
+  parameter_labels:
+  - s
+  - q
+  - rho
+  - u0
+  - alpha
+  - t0
+  - tE
+  - piEE
+  - piEN
+  prange_linear:
+  - 0.2
+  - 0.1
+  - 1.0
+  - 10.0
+  - 10.0
+  prange_log:
+  - 0.2
+  - 1.0
+  - 1.0
+  - 0.2
+plotting_config:
+  plot_flags: icpf
+  sort_method: alphanumeric
+prior_config:
+  sigma_fb: 50.0
+  sigma_logq: 0.5
+  sigma_logrho: 0.2
+  sigma_logs: 0.5
+  sigma_logtE: 0.1
+  sigma_piEE: 5.0
+  sigma_piEN: 5.0
+  sigma_t0: 0.5
+prior_type:
+  normal: true
+  unit_cube: false
+run_info:
+  command_line: gulls_post.py 4 Fisher_overguide_m40/ -s emcee -t 6 -noLOM -prior
+    normal -nbimin 1000 -nbimax 2000 -n 2000 -nstep 5000 -f icpf
+  event_name: '721_1_692'
+  start_time: Sun Sep  7 14:28:27 2025
+  start_timestamp: 1757269707.050839
+  working_directory: /Users/malpas.1/Code/GullsPosteriors
+sampling_config:
+  LOM_enabled: false
+  adaptive_burnin: false
+  burnin_max_steps: 2000
+  burnin_min_steps: 1000
+  burnin_stepi: 200
+  n_samples: 2000
+  n_step: 5000
+  prior_type: normal
+  sampler: emcee
+  threads: 6
+  use_fisher_prior: false

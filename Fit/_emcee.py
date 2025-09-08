@@ -623,7 +623,8 @@ def corner_post(
         fisher_covariance=None, 
         fisher_uncertainties=None, 
         log_param_names=None,
-        k2 = 1):
+        k2 = 1,
+        return_figure=False):
     """Create a corner plot of the posterior samples, with Fisher uncertainty lines and ellipses.
 
     Parameters
@@ -644,6 +645,15 @@ def corner_post(
         List of parameter names that are log-transformed.
     k2 : float, optional
         The k² value for the confidence ellipse. Default is 1 (39% confidence).
+    return_figure : bool, optional
+        If True, return the matplotlib figure object instead of saving to file.
+        If False (default), save the figure to disk and close it.
+
+    Returns
+    -------
+    matplotlib.figure.Figure or None
+        If return_figure=True, returns the matplotlib figure object.
+        If return_figure=False, returns None (saves to file instead).
 
     Notes
     -----
@@ -677,7 +687,11 @@ def corner_post(
     None
     """
     import matplotlib.patches as mpatches
-    if self.LOM_enabled:
+    # Determine the number of parameters from samples shape
+    ndim = samples.shape[1]
+    
+    # Set up labels based on actual number of parameters
+    if ndim == 12 or (hasattr(self, 'LOM_enabled') and self.LOM_enabled):
         labels = [
             r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}\rho$", 
             r"$u_0$", r"$\alpha$", r"$t_0$", r"$\log_{10}t_E$", 
@@ -692,65 +706,72 @@ def corner_post(
             r"$\pi_{EE}$", r"$\pi_{EN}$"
         ]
         true_params = truths["params"][:9]
-    ndim = len(labels)
+    
+    # Trim labels and truths to match actual number of parameters
+    labels = labels[:ndim]
+    true_params = true_params[:ndim]
+    
     if log_param_names is None:
         log_param_names = ["s", "q", "rho", "tE", "period"]
 
-    # log transform the samples if necessary
-    log_samples = np.zeros_like(samples)
+    # Samples are already in the correct space (log for log params, linear for linear params)
+    # No transformation needed - just copy the samples
+    processed_samples = samples.copy()
+
+    # Drop the first half of the samples
+    nsteps = processed_samples.shape[0]
+    processed_samples = processed_samples[nsteps//2:]
+    
+    # Convert truth values to the same space as samples (log space for log parameters)
+    plot_truths = np.zeros(ndim)
     for i in range(ndim):
-        if labels[i] in log_param_names:
-            log_samples[:, i] = np.log10(samples[:, i])
+        # Extract parameter name from label (remove log10 and latex formatting)
+        param_base_name = labels[i].replace(r"$\log_{10}", "").replace(r"$", "").replace("}", "")
+        if param_base_name in log_param_names:
+            # Convert truth to log space
+            plot_truths[i] = np.log10(true_params[i]) if true_params[i] > 0 else np.nan
         else:
-            log_samples[:, i] = samples[:, i]
+            # Keep truth in linear space
+            plot_truths[i] = true_params[i]
 
-    # drop the first half of the samples
-    nsteps = log_samples.shape[0]
-    log_samples = log_samples[nsteps//2:]
-
-    fig = corner.corner(log_samples, labels=labels, truths=true_params)
+    fig = corner.corner(processed_samples, labels=labels, truths=plot_truths)
     axes = np.array(fig.axes).reshape((ndim, ndim))
 
     # 1D: Add solid blue vertical lines at truth, and at truth ± Fisher uncertainty
     for i in range(ndim):
         ax = axes[i, i]
-        truth = true_params[i]
-        # transform truth into log space if necessary
-        if labels[i] in log_param_names:
-            truth = np.log10(truth)
+        truth = plot_truths[i]  # Already in correct space
         sigma = None if fisher_uncertainties is None else fisher_uncertainties[i]
         param_name = labels[i]
         truth_text = ""
 
-        if truth is not None:
-            # Plot truth line in log space (for log params) or physical space (for linear params)
+        if truth is not None and not np.isnan(truth):
+            # Plot truth line (already in correct space)
             ax.axvline(truth, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
             truth_text += f"{true_params[i]:.4f}"
 
         if sigma is not None:
-            if labels[i] in log_param_names:
-                # For log parameters: Fisher uncertainties are ALREADY in log space
-                # So plot them directly in log space
-                ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-                ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-                
-                # The blue text shows physical space truth ± physical space uncertainty
-                # Convert log-space sigma to physical space for display
+            # Fisher uncertainties are already in the correct space from Data class
+            # Plot uncertainty lines directly
+            ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+            ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+            
+            # Extract parameter name for display text
+            param_base_name = labels[i].replace(r"$\log_{10}", "").replace(r"$", "").replace("}", "")
+            if param_base_name in log_param_names:
+                # For log parameters: display asymmetric errors in physical space
                 phys_truth = true_params[i]
                 phys_plus = 10**(np.log10(phys_truth) + sigma)
                 phys_minus = 10**(np.log10(phys_truth) - sigma)
                 phys_sigma_plus = phys_plus - phys_truth
                 phys_sigma_minus = phys_truth - phys_minus
-                # Use asymmetric error bars in text
                 truth_text += f"$^{{+{phys_sigma_plus:.4f}}}_{{-{phys_sigma_minus:.4f}}}$"
             else:
-                # For linear parameters: Fisher uncertainties are in physical space
-                ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
-                ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+                # For linear parameters: display symmetric errors
                 truth_text += f" $\pm$ {sigma:.4f}"
 
-        # values labels
-        p_16, p_50, p_84 = np.percentile(samples[:, i], [16, 50, 84])
+        # Calculate posterior statistics from the processed samples (which are in correct space)
+        p_16, p_50, p_84 = np.percentile(processed_samples[:, i], [16, 50, 84])
         upper_unc = p_84 - p_50
         lower_unc = p_50 - p_16
 
@@ -768,18 +789,16 @@ def corner_post(
         for i in range(ndim):
             for j in range(i):
                 ax = axes[i, j]
-                x0, y0 = true_params[j], true_params[i]
-                # transform truth into log space if necessary
-                if labels[j] in log_param_names:
-                    x0 = np.log10(x0)
-                if labels[i] in log_param_names:
-                    y0 = np.log10(y0)
+                # Use plot truths which are already in correct space
+                x0, y0 = plot_truths[j], plot_truths[i]
+                
+                # Extract 2x2 covariance submatrix
                 cov = np.array([
                     [fisher_covariance[j, j], fisher_covariance[j, i]],
                     [fisher_covariance[i, j], fisher_covariance[i, i]]
-                ])  #extract the 2 × 2 sub–covariance matrix
+                ])
 
-                # Draw cross-bars
+                # Draw cross-bars using Fisher uncertainties (already in correct space)
                 sigma_x = np.sqrt(fisher_covariance[j, j])
                 sigma_y = np.sqrt(fisher_covariance[i, i])
 
@@ -813,8 +832,19 @@ def corner_post(
                 ax.add_patch(ellipse)
 
     fig.suptitle(event_name, y=1.0)
-    fig.savefig(path + "posteriors/" + event_name + "_corner.png")
-    plt.close(fig)
+    
+    if return_figure:
+        # Return the figure object for display in notebook
+        return fig
+    else:
+        # Save to file and close (original behavior)
+        # Create directory if it doesn't exist
+        import os
+        output_dir = path + "posteriors/"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        fig.savefig(output_dir + event_name + "_corner.png")
+        plt.close(fig)
 
     if "corner" in self.debug:
         print("debug Fit.corner_post: labels: ", labels)
