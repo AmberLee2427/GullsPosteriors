@@ -23,7 +23,9 @@ def run_emcee(
     path="./",
     labels=None,
     fisher_uncertainties_for_prior=None, # Added this argument
-    fisher_uncertainties_for_plotting=None # Added this argument
+    fisher_uncertainties_for_plotting=None, # Added this argument
+    plot_chains=False,
+    show_progress=False
 ):
     """Run an ``emcee`` ensemble sampler.
 
@@ -63,6 +65,10 @@ def run_emcee(
         1-sigma Fisher uncertainties used to define the prior ranges.
     fisher_uncertainties_for_plotting : array_like or None, optional
         1-sigma Fisher uncertainties used for plotting.
+    plot_chains : bool, optional
+        If ``True``, plot the chains after each stepi.
+    show_progress : bool, optional
+        If ``True``, show progress bars during sampling.
 
     Returns
     -------
@@ -77,6 +83,10 @@ def run_emcee(
 
     # Set the current event for the prior
     self.current_event = event_obj
+
+    # Set the plot chain and show progress attributes
+    self.plot_chains = plot_chains
+    self.show_progress = show_progress
 
     # Set up arguments based on which log probability function we're using
     # lnprob_transform expects: (self, u, event, truths_dict, prange_linear, prange_log, normal, fisher_uncertainties_for_prior)
@@ -194,7 +204,9 @@ def run_burnin(
     path="./",
     labels=None,
     min_steps=500,
-    fisher_uncertainties_for_plotting=None # Added this argument
+    fisher_uncertainties_for_plotting=None,  # Added this argument
+    plot_chains=False,
+    show_progress=False
 ):
     """Run a short ``emcee`` burn-in phase expanding priors as needed.
 
@@ -243,6 +255,10 @@ def run_burnin(
     fisher_uncertainties_for_plotting : array_like or None, optional
         1-sigma Fisher uncertainties used for plotting only. 
         Fisher priors and adaptive widths are not currently supported.
+    plot_chains : bool, optional
+        If ``True``, plot the chains after each stepi.
+    show_progress : bool, optional
+        If ``True``, show progress bars during sampling.
 
     Returns
     -------
@@ -260,6 +276,10 @@ def run_burnin(
 
     # Set the current event for the prior
     self.current_event = event_obj
+
+    # Set the plot chain and show progress attributes
+    self.plot_chains = plot_chains
+    self.show_progress = show_progress
 
     # truths (the dictionary) is passed here, and lnprob_transform will extract truths['params']
     # Pass fisher_uncertainties_for_prior to log_prob_function
@@ -616,15 +636,17 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
 
 
 def corner_post(
-        self, 
-        samples, 
-        event_name, 
-        path, truths, 
-        fisher_covariance=None, 
-        fisher_uncertainties=None, 
-        log_param_names=None,
-        k2 = 1,
-        return_figure=False):
+    self,
+    samples,
+    event_name,
+    path, truths,
+    fisher_covariance=None,
+    fisher_covariance_schur=None,
+    fisher_uncertainties=None,
+    log_param_names=None,
+    k2=1,
+    return_figure=False,
+    use_schur=False):
     """Create a corner plot of the posterior samples, with Fisher uncertainty lines and ellipses.
 
     Parameters
@@ -638,16 +660,20 @@ def corner_post(
     truths : dict
         Dictionary containing the true parameter values.
     fisher_covariance : array_like or None, optional
-        Fisher covariance matrix (model_covariance, in linear space).
+        Full (block from inverse) Fisher covariance matrix (model parameters only) in plotting space.
+    fisher_covariance_schur : array_like or None, optional
+        Schur-complement covariance alternative for the model parameter block.
     fisher_uncertainties : array_like or None, optional
-        1-sigma Fisher uncertainties for each parameter (in linear space).
+        1-sigma uncertainties (will be derived from the selected covariance if not provided).
     log_param_names : list or None, optional
         List of parameter names that are log-transformed.
     k2 : float, optional
         The k² value for the confidence ellipse. Default is 1 (39% confidence).
     return_figure : bool, optional
         If True, return the matplotlib figure object instead of saving to file.
-        If False (default), save the figure to disk and close it.
+    use_schur : bool, optional
+        When True and ``fisher_covariance_schur`` is provided, the Schur covariance
+        (and its diagonal uncertainties) are used for all uncertainty lines and ellipses.
 
     Returns
     -------
@@ -687,21 +713,32 @@ def corner_post(
     None
     """
     import matplotlib.patches as mpatches
+
+    # Select active covariance (Schur if requested and available)
+    active_cov = None
+    if use_schur and (fisher_covariance_schur is not None):
+        active_cov = fisher_covariance_schur
+    else:
+        active_cov = fisher_covariance
+
+    # If uncertainties not supplied, derive from whichever covariance is active
+    if fisher_uncertainties is None and active_cov is not None:
+        fisher_uncertainties = np.sqrt(np.diag(active_cov))
     # Determine the number of parameters from samples shape
     ndim = samples.shape[1]
     
     # Set up labels based on actual number of parameters
     if ndim == 12 or (hasattr(self, 'LOM_enabled') and self.LOM_enabled):
         labels = [
-            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}\rho$", 
+            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}{\rho}$", 
             r"$u_0$", r"$\alpha$", r"$t_0$", r"$\log_{10}t_E$", 
             r"$\pi_{EE}$", r"$\pi_{EN}$", 
-            r"$i$", r"$\phi$", r"$\log_{10}P$"
+            r"$i$", r"$\phi$", r"$\log_{10}{period}$"
         ]
         true_params = truths["params"]
     else:
         labels = [
-            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}\rho$", 
+            r"$\log_{10}s$", r"$\log_{10}q$", r"$\log_{10}{\rho}$", 
             r"$u_0$", r"$\alpha$", r"$t_0$", r"$\log_{10}t_E$", 
             r"$\pi_{EE}$", r"$\pi_{EN}$"
         ]
@@ -713,6 +750,8 @@ def corner_post(
     
     if log_param_names is None:
         log_param_names = ["s", "q", "rho", "tE", "period"]
+    # replace tE with t_E
+    log_param_names = [name.replace("tE", "t_E") for name in log_param_names]
 
     # Samples are already in the correct space (log for log params, linear for linear params)
     # No transformation needed - just copy the samples
@@ -723,32 +762,34 @@ def corner_post(
     processed_samples = processed_samples[nsteps//2:]
     
     # Convert truth values to the same space as samples (log space for log parameters)
-    plot_truths = np.zeros(ndim)
-    for i in range(ndim):
-        # Extract parameter name from label (remove log10 and latex formatting)
-        param_base_name = labels[i].replace(r"$\log_{10}", "").replace(r"$", "").replace("}", "")
-        if param_base_name in log_param_names:
-            # Convert truth to log space
-            plot_truths[i] = np.log10(true_params[i]) if true_params[i] > 0 else np.nan
-        else:
-            # Keep truth in linear space
-            plot_truths[i] = true_params[i]
+    plot_truths = true_params.copy()
+    log_indicies = []
+    # replace the logs
+    for log_parameter in log_param_names:
+        print(f"Checking for log parameter: {log_parameter}")
+        for i in range(ndim):
+            if log_parameter in labels[i] and "log" in labels[i]:
+                print(f"Replacing {labels[i]} with log10")
+                plot_truths[i] = np.log10(true_params[i]) if true_params[i] > 0 else np.nan
+                log_indicies.append(i)
 
     fig = corner.corner(processed_samples, labels=labels, truths=plot_truths)
     axes = np.array(fig.axes).reshape((ndim, ndim))
 
     # 1D: Add solid blue vertical lines at truth, and at truth ± Fisher uncertainty
-    for i in range(ndim):
+    for i, truth in enumerate(plot_truths):
         ax = axes[i, i]
         truth = plot_truths[i]  # Already in correct space
         sigma = None if fisher_uncertainties is None else fisher_uncertainties[i]
         param_name = labels[i]
-        truth_text = ""
+        truth_text = f"{param_name} = "
 
         if truth is not None and not np.isnan(truth):
             # Plot truth line (already in correct space)
             ax.axvline(truth, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
-            truth_text += f"{true_params[i]:.4f}"
+            
+            # For log parameters: display truth in log space to match the plot
+            truth_text += f"{truth:.4f}"  # truth is already in log space
 
         if sigma is not None:
             # Fisher uncertainties are already in the correct space from Data class
@@ -756,19 +797,8 @@ def corner_post(
             ax.axvline(truth + sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
             ax.axvline(truth - sigma, color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
             
-            # Extract parameter name for display text
-            param_base_name = labels[i].replace(r"$\log_{10}", "").replace(r"$", "").replace("}", "")
-            if param_base_name in log_param_names:
-                # For log parameters: display asymmetric errors in physical space
-                phys_truth = true_params[i]
-                phys_plus = 10**(np.log10(phys_truth) + sigma)
-                phys_minus = 10**(np.log10(phys_truth) - sigma)
-                phys_sigma_plus = phys_plus - phys_truth
-                phys_sigma_minus = phys_truth - phys_minus
-                truth_text += f"$^{{+{phys_sigma_plus:.4f}}}_{{-{phys_sigma_minus:.4f}}}$"
-            else:
-                # For linear parameters: display symmetric errors
-                truth_text += f" $\pm$ {sigma:.4f}"
+            # For all parameters: display uncertainty in the same space as the plot
+            truth_text += f" $\pm$ {sigma:.4f}"
 
         # Calculate posterior statistics from the processed samples (which are in correct space)
         p_16, p_50, p_84 = np.percentile(processed_samples[:, i], [16, 50, 84])
@@ -776,7 +806,7 @@ def corner_post(
         lower_unc = p_50 - p_16
 
         # The black text for your posterior results
-        post_text = f"${p_50:.4f}^{{+{upper_unc:.4f}}}_{{-{lower_unc:.4f}}}$"
+        post_text = f"{param_name} = ${p_50:.4f}^{{+{upper_unc:.4f}}}_{{-{lower_unc:.4f}}}$"
 
         # Place the black text (samples) near the top center
         ax.text(0.5, 1.05, post_text, color="black", ha='center', va='center', transform=ax.transAxes)
@@ -785,7 +815,7 @@ def corner_post(
         ax.text(0.5, 1.15, truth_text, color="blue", ha='center', va='center', transform=ax.transAxes)
 
     # 2D: Add solid blue cross-bars and 68% confidence ellipse
-    if fisher_covariance is not None:
+    if active_cov is not None:
         for i in range(ndim):
             for j in range(i):
                 ax = axes[i, j]
@@ -794,13 +824,13 @@ def corner_post(
                 
                 # Extract 2x2 covariance submatrix
                 cov = np.array([
-                    [fisher_covariance[j, j], fisher_covariance[j, i]],
-                    [fisher_covariance[i, j], fisher_covariance[i, i]]
+                    [active_cov[j, j], active_cov[j, i]],
+                    [active_cov[i, j], active_cov[i, i]]
                 ])
 
                 # Draw cross-bars using Fisher uncertainties (already in correct space)
-                sigma_x = np.sqrt(fisher_covariance[j, j])
-                sigma_y = np.sqrt(fisher_covariance[i, i])
+                sigma_x = np.sqrt(active_cov[j, j])
+                sigma_y = np.sqrt(active_cov[i, i])
 
                 ax.axvline(x0, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)
                 ax.axhline(y0, color="blue", linestyle="-", linewidth=1.5, alpha=0.7)

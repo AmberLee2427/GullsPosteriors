@@ -69,7 +69,7 @@ class Fit:
         sigma_u0=0.5,
         sigma_alpha=0.5,
         sigma_t0=0.5,
-        sigma_logtE=0.1,
+        sigma_logtE=1.0,
         sigma_piEE=5.0,
         sigma_piEN=5.0,
         normal=True,
@@ -362,6 +362,11 @@ class Fit:
                     # Get blend flux for this parameter set
                     t = current_event.data[list(current_event.data.keys())[0]][0]  # Get times from first observatory
                     A = current_event.get_magnification(t, list(current_event.data.keys())[0])
+                    # Graceful fail if magnification generation failed
+                    if A is None or (not np.any(np.isfinite(A))):
+                        if "ln_prior" in self.debug:
+                            print("debug Fit.lnprior: magnification is None/invalid -> reject")
+                        return -np.inf
                     f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
                     f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
                     _, fb = self.get_fluxes(A, f, f_err**2)
@@ -399,6 +404,10 @@ class Fit:
                     # Get blend flux for this parameter set
                     t = current_event.data[list(current_event.data.keys())[0]][0]  # Get times from first observatory
                     A = current_event.get_magnification(t, list(current_event.data.keys())[0])
+                    if A is None or (not np.any(np.isfinite(A))):
+                        if "ln_prior" in self.debug:
+                            print("debug Fit.lnprior: magnification None/invalid (No LOM) -> reject")
+                        return -np.inf
                     f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
                     f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
                     _, fb = self.get_fluxes(A, f, f_err**2)

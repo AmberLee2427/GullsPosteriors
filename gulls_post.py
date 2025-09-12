@@ -234,9 +234,11 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
         'prior_config': {
             # Save sigma parameters for normal priors
             'sigma_fb': fit_obj.sigma_fb,
-            'sigma_logrho': fit_obj.sigma_logrho if not fit_obj.unit_cube else None,
-            'sigma_logq': fit_obj.sigma_logq if not fit_obj.unit_cube else None,
             'sigma_logs': fit_obj.sigma_logs if not fit_obj.unit_cube else None,
+            'sigma_logq': fit_obj.sigma_logq if not fit_obj.unit_cube else None,
+            'sigma_logrho': fit_obj.sigma_logrho if not fit_obj.unit_cube else None,
+            'sigma_u0': fit_obj.sigma_u0 if not fit_obj.unit_cube else None,
+            'sigma_alpha': fit_obj.sigma_alpha if not fit_obj.unit_cube else None,
             'sigma_t0': fit_obj.sigma_t0 if fit_obj.normal and not fit_obj.unit_cube else None,
             'sigma_logtE': fit_obj.sigma_logtE if fit_obj.normal and not fit_obj.unit_cube else None,
             'sigma_piEE': fit_obj.sigma_piEE if fit_obj.normal and not fit_obj.unit_cube else None,
@@ -380,8 +382,8 @@ def run(args):
         if plot_initial:
             try:
                 fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, gridspec_kw={"height_ratios": [3, 2]})
-                base_colours = ["orange", "red", "green", "purple", "cyan", "magenta", "brown", "olive"]
-                default_labels = {0: "W146", 1: "Z087", 2: "K213"}
+                base_colours = ["green", "red", "orange", "blue", "purple", "yellow"]
+                default_labels = {0: "F146", 1: "F062", 2: "F087", 3: "F184", 4: "F213", 5: "F106"}
                 ordered_obs = sorted(list(data.keys()))
                 colour_map = {obs: base_colours[i % len(base_colours)] for i, obs in enumerate(ordered_obs)}
                 label_map = {obs: default_labels.get(obs, f"Obs{obs}") for obs in ordered_obs}
@@ -412,41 +414,72 @@ def run(args):
                 plt.savefig(path + f"posteriors/{event_name}_truths_lightcurve.png", dpi=200)
                 plt.close(fig)
 
-                # Caustic plot
+                # Caustic plot (center on source at t_ref, show trajectory, fixed +/-3 bounds)
                 fig = plt.figure()
-                # For LOM disabled, phase/incl/period indices don't exist beyond ndim
-                if LOM_enabled:
-                    inc = truths['params'][9]; phase = truths['params'][10]; period = truths['params'][11]
-                else:
-                    # Provide placeholders for separation projection (use existing params)
-                    inc = 0.0; phase = 0.0; period = 1.0
+                axc = plt.gca()
+
+                # Ensure trajectory diagnostics exist for event_tref by evaluating magnification on data epochs
                 try:
-                    s_tc, _, _ = event_tref.projected_separation(inc, period, truths['tcroin'], phase_offset=phase,
-                                                                 t_start=truths['tcroin'], a=truths.get('Planet_semimajoraxis', 1.0) / truths.get('rE', 1.0))
-                    caustics_tc = vbm.Caustics(s_tc, truths['params'][1])
-                    for closed in caustics_tc:
-                        plt.plot(closed[0], closed[1], '-', color='cyan', ms=0.2, alpha=0.5)
+                    for obs in ordered_obs:
+                        _ = event_tref.get_magnification(t_data[obs], obs)
                 except Exception:
                     pass
-                plt.plot(event_tref.lens1_0[0], event_tref.lens1_0[1], 'o', ms=6, color='red')
-                plt.plot(event_tref.lens2_0[0], event_tref.lens2_0[1], 'o', ms=6, color='red')
-                if LOM_enabled:
-                    plt.plot(event_tref.traj_parallax_dalpha_u1[0], event_tref.traj_parallax_dalpha_u2[0], '-', color='cyan', alpha=0.5)
-                plt.grid(); plt.axis('equal')
-                plt.savefig(path + f"posteriors/{event_name}_truths_caustic.png", dpi=200)
-                plt.close(fig)
 
-                # Optional LOM diagnostics
-                if LOM_enabled:
-                    try:
-                        plt.figure(); plt.plot(event_tref.tau[0], event_tref.ss[0], '.', alpha=0.1)
-                        plt.xlabel(r"$\\tau$"); plt.ylabel('s'); plt.savefig(path + f"posteriors/{event_name}_dsdtau.png"); plt.close()
-                        plt.figure(); plt.plot(event_tref.tau[0], event_tref.dalpha[0], '.', alpha=0.1)
-                        plt.xlabel(r"$\\tau$"); plt.ylabel(r'd$\\alpha$'); plt.savefig(path + f"posteriors/{event_name}_dalphadtau.png"); plt.close()
-                    except Exception:
-                        pass
-            except Exception as e:  # noqa: BLE001
-                print(f"Warning: initial plotting failed for {event_name}: {e}")
+                # Choose an observatory to anchor the center (first available)
+                first_obs = ordered_obs[0]  # this is the Roman wide filter. All observations are from Roman
+                t_arr = t_data[first_obs]
+                # Find closest time index to t_ref
+                idx_center = int(np.argmin(np.abs(t_arr - event_tref.t_ref)))
+                
+                # Source position at (approx) t_ref in COM, rotated frame
+                if first_obs in event_tref.traj_parallax_dalpha_u1:
+                    x0 = event_tref.traj_parallax_dalpha_u1[first_obs][idx_center]
+                else:
+                    x0 = 0.0
+                    print("Warning: No trajectory data for dAlpha_u1; defaulting x0=0.0")
+                if first_obs in event_tref.traj_parallax_dalpha_u2:
+                    y0 = event_tref.traj_parallax_dalpha_u2[first_obs][idx_center]
+                else:
+                    y0 = 0.0
+                    print("Warning: No trajectory data for dAlpha_u2; defaulting y0=0.0")
+
+                # Plot trajectory for each observatory if available
+                u1_arr = event_tref.traj_parallax_dalpha_u1[first_obs]
+                u2_arr = event_tref.traj_parallax_dalpha_u2[first_obs]
+                if u1_arr is not None and u2_arr is not None:
+                    axc.plot(u1_arr, u2_arr, '-', alpha=0.4, lw=1.0)
+
+                # Mark the t_ref point
+                axc.plot(x0, y0, marker='*', color='k', ms=2, zorder=5)
+                
+                # Draw caustics using separation near t_ref
+                s_use = float(truths['params'][0])
+                q_use = float(truths['params'][1])
+                caustics = vbm.Caustics(s_use, q_use)
+                for closed in caustics:
+                    axc.plot(closed[0], closed[1], '-', color='blue', ms=1, alpha=0.7)
+
+                # Lens positions (COM frame at t_ref)
+                axc.plot(event_tref.lens1_0[0], event_tref.lens1_0[1], 'o', ms=6, color='red')
+                axc.plot(event_tref.lens2_0[0], event_tref.lens2_0[1], 'o', ms=6*q_use, color='red')
+
+                # Center and bounds
+                axc.set_aspect('equal', adjustable='box')
+                axc.set_xlim(x0 - 5.0, x0 + 5.0)
+                axc.set_ylim(y0 - 5.0, y0 + 5.0)
+                axc.grid(True, alpha=0.3)
+                plt.savefig(
+                    path + f"posteriors/{event_name}_truths_caustic.png", 
+                    dpi=200, 
+                    bbox_inches='tight'
+                )
+                plt.close(fig)
+                
+            except Exception as e:
+                print(
+                    f"Error occurred while plotting initial plots for event {event_name}: \n"
+                    f"{e}"
+                )
 
         # Crop data around event
         t0_win, tE_win = truths["params"][5], truths["params"][6]
@@ -503,6 +536,8 @@ def run(args):
                     prange_linear, prange_log, p_unc, normal, max_steps=args.burnin_max_steps,
                     threads=args.threads, event_name=event_name, path=path, labels=labels,
                     min_steps=args.burnin_min_steps, fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
+                    plot_chains=plot_chains,
+                    show_progress=False
                 )
             else:
                 state = initial_pos
@@ -512,6 +547,8 @@ def run(args):
                 threads=args.threads, event_name=event_name, path=path, labels=labels,
                 fisher_uncertainties_for_plotting=fit_obj.fisher_uncertainties_for_plotting,
                 fisher_uncertainties_for_prior=fit_obj.fisher_uncertainties_for_prior,
+                plot_chains=plot_chains,
+                show_progress=False
             )
 
             flat_chain = sampler.get_chain(flat=True)

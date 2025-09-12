@@ -22,7 +22,7 @@ class Event:
         t_start: float,
         t_ref: float,
         eps=1e-4,
-        gamma=0.36,
+        gamma=0.36,  #this is wrong
         LOM_enabled=True,
     ):
         """Instantiate a microlensing event model.
@@ -611,7 +611,7 @@ class Event:
         self.traj_parallax_dalpha_u1[obs] = xsrot
         self.traj_parallax_dalpha_u2[obs] = ysrot
 
-        rho = self.params[2].copy()  # source radius in units of thetaE
+        rho = p[2]  # source radius in units of thetaE
 
         # print('\ndebug Event.get_magnification: q: \n',
         #      q, q.shape
@@ -646,14 +646,18 @@ class Event:
         # print('Debug Event.get_magnification: tref', t_ref)
         # print('Debug Event.get_magnification: t', t)
 
-        A = self.magnification(
-            ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
-        )
+        try:
+            A = self.magnification(
+                ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
+            )
+        except:
+            print("Warning: Magnification calculation failed or timed out")
+            return None
 
         # Handle timeout/failure from VBMicrolensing
         if A is None:
             print("Warning: Magnification calculation failed or timed out, returning NaN array")
-            return np.full_like(ss, np.nan)
+            return None
 
         # vbbl has CoM O
 

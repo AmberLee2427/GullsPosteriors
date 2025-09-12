@@ -55,7 +55,8 @@ sample-241113/
 trash/
 #FishVBM_Therr_m20/
 repsample/
-5f_overguide_m40
+5f_overguide_m40/
+filter_selection/
 
 # Ignore large data artifacts
 *.out.hdf5

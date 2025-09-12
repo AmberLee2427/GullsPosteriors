@@ -409,7 +409,9 @@ class Data:
             "dTheta14",
             "dTheta15",
             "dTheta16",
-            "dTheta17"
+            "dTheta17",
+            "dTheta18",
+            "dTheta19",
         ]
 
         # First, read the file to see how many columns it actually has
@@ -541,7 +543,18 @@ class Data:
             flux_errors = data["measured_relative_flux_error"].values
             weights = 1.0 / (flux_errors**2)
             
-            # Compute full Fisher matrix: F = D^T W D
+            # --- Model-only Fisher before adding flux params ---
+            model_weighted = model_derivs_reordered * weights[:, None]
+            model_only_fisher = model_derivs_reordered.T @ model_weighted
+            try:
+                model_only_covariance = np.linalg.inv(model_only_fisher)
+                model_only_success = True
+            except np.linalg.LinAlgError:
+                model_only_covariance = np.linalg.pinv(model_only_fisher, rcond=1e-10)
+                model_only_success = False
+            model_only_uncertainties = np.sqrt(np.abs(np.diag(model_only_covariance)))
+
+            # --- Full Fisher including flux params ---
             weighted_derivs = full_derivatives * weights[:, None]
             full_fisher = full_derivatives.T @ weighted_derivs
             
@@ -567,22 +580,59 @@ class Data:
                 fisher_success = False
             
             if fisher_success:
-                # Extract model parameter covariance block (marginalized over flux params)
+                # Partition blocks using local counts
+                F_mm = full_fisher[:n_model_params, :n_model_params]
+                F_mf = full_fisher[:n_model_params, n_model_params:]
+                F_fm = full_fisher[n_model_params:, :n_model_params]
+                F_ff = full_fisher[n_model_params:, n_model_params:]
+
+                # Extract marginalized covariance block (block of inverse is already marginalized)
                 self.model_covariance = full_covariance[:n_model_params, :n_model_params]
                 self.model_parameter_uncertainties = np.sqrt(np.abs(np.diag(self.model_covariance)))
-                
-                # Backward compatibility: fisher_matrix as inverse of model covariance
+
+                # Schur complement fisher (F_mm - F_mf F_ff^{-1} F_fm)
+                if n_flux_params > 0:
+                    try:
+                        F_ff_inv = np.linalg.inv(F_ff)
+                    except np.linalg.LinAlgError:
+                        F_ff_inv = np.linalg.pinv(F_ff, rcond=1e-10)
+                    schur_fisher = F_mm - F_mf @ F_ff_inv @ F_fm
+                else:
+                    schur_fisher = F_mm.copy()
+
+                try:
+                    schur_cov = np.linalg.inv(schur_fisher)
+                except np.linalg.LinAlgError:
+                    schur_cov = np.linalg.pinv(schur_fisher, rcond=1e-10)
+
+                try:
+                    denom = np.maximum(1e-30, np.abs(self.model_covariance))
+                    schur_diff = np.max(np.abs(schur_cov - self.model_covariance) / denom)
+                except Exception:
+                    schur_diff = None
+
+                # Store Schur artifacts only as diagnostics
+                self.schur_fisher_matrix = schur_fisher
+                self.schur_covariance_alt = schur_cov
+                self.schur_max_rel_diff = schur_diff
+                # Primary fisher_matrix now from full inverse (inverse of marginalized covariance)
                 try:
                     self.fisher_matrix = np.linalg.inv(self.model_covariance)
-                except (np.linalg.LinAlgError, ValueError):
-                    self.fisher_matrix = np.zeros((n_model_params, n_model_params))
-                    print("Model covariance block also singular; using zero fisher_matrix")
+                except np.linalg.LinAlgError:
+                    self.fisher_matrix = np.linalg.pinv(self.model_covariance, rcond=1e-10)
+                    print("Note: Used pseudo-inverse for model covariance when forming fisher_matrix.")
             else:
-                # Fallback values
-                self.model_covariance = np.zeros((n_model_params, n_model_params))
-                self.model_parameter_uncertainties = np.zeros(n_model_params)
-                self.fisher_matrix = np.zeros((n_model_params, n_model_params))
-                print("Using fallback zero matrices for Fisher results")
+                self.model_covariance = model_only_covariance
+                self.model_parameter_uncertainties = model_only_uncertainties
+                self.fisher_matrix = model_only_fisher
+                if not model_only_success:
+                    print("Warning: model-only Fisher also required pseudo-inverse; results may be unstable.")
+
+            # Store model-only artifacts regardless
+            self.model_only_fisher = model_only_fisher
+            self.model_only_covariance = model_only_covariance
+            self.model_only_uncertainties = model_only_uncertainties
+            self.model_only_inversion_success = model_only_success
             
             # Store additional attributes for debugging
             self.full_fisher_matrix = full_fisher
@@ -592,12 +642,23 @@ class Data:
 
             # --- DEBUG PRINTS FOR FISHER CALCULATIONS ---
             print("\n--- Fisher Calculation Debug ---")
-            print(f"Fisher Matrix shape: {self.fisher_matrix.shape}")
-            print(f"Fisher Matrix (first 3x3): \n{self.fisher_matrix[:3,:3]}")
-            print(f"Model Covariance shape: {self.model_covariance.shape}")
-            print(f"Model Covariance (first 3x3): \n{self.model_covariance[:3,:3]}")
-            print(f"Model Parameter Uncertainties (1-sigma): \n{self.model_parameter_uncertainties}")
+            print(f"Full Fisher shape: {full_fisher.shape}")
+            print(f"Model-only Fisher shape: {self.model_only_fisher.shape}")
+            print(f"Model-only inversion success: {self.model_only_inversion_success}")
+            if fisher_success and n_flux_params > 0:
+                print(f"Schur fisher (diagnostic) shape: {self.schur_fisher_matrix.shape}")
+                print(f"Primary fisher (from inverse full covariance) shape: {self.fisher_matrix.shape}")
+                print(f"Max rel diff (Schur covariance vs block inverse): {self.schur_max_rel_diff}")
+            print(f"Marginalized covariance shape: {self.model_covariance.shape}")
+            print(f"Raw model-only uncertainties: {self.model_only_uncertainties}")
+            print(f"Marginalized uncertainties: {self.model_parameter_uncertainties}")
             print("--- End Fisher Calculation Debug ---\n")
+
+            # Store additional attributes (after debug so they exist regardless)
+            self.full_fisher_matrix = full_fisher
+            self.full_covariance = full_covariance
+            self.n_flux_params = n_flux_params
+            self.fisher_inversion_success = fisher_success
 
         data = data[required_columns]
 
