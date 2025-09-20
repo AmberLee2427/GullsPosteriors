@@ -22,7 +22,7 @@ class Event:
         t_start: float,
         t_ref: float,
         eps=1e-4,
-        gamma=0.36,  #this is wrong
+        gamma=None,  # Read from truths if available, else default to 0.36
         LOM_enabled=True,
     ):
         """Instantiate a microlensing event model.
@@ -102,7 +102,11 @@ class Event:
         # print('debug Event.__init__: sim_time0: ', self.sim_time0)
         # print('debug Event.__init__: t_ref: ', self.t_ref)
         self.eps = eps
-        self.gamma = gamma
+        # Set gamma from truths if available, otherwise use default
+        if gamma is None:
+            self.gamma = truths.get('Gamma', truths.get('gamma', 0.36))
+        else:
+            self.gamma = gamma
         self.mag_obj = None
 
         self.LOM_enabled = LOM_enabled  # NEW: store the flag

@@ -8,7 +8,7 @@ class TimeoutError(Exception):
 def timeout_handler(signum, frame):
     raise TimeoutError("VBMicrolensing calculation timed out")
 
-def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36, timeout=300):
+def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=None, timeout=300):
     """Return the binary-lens magnification using :mod:`VBMicrolensing`.
 
     Parameters
@@ -26,7 +26,8 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36, timeout=300):
     eps : float, optional
         Relative tolerance passed to :mod:`VBMicrolensing`. Default ``1e-4``.
     gamma : float, optional
-        Limb-darkening coefficient ``a1`` for :mod:`VBMicrolensing`.
+        Limb-darkening coefficient ``a1`` for :mod:`VBMicrolensing`. 
+        If None, uses 0.36 as default.
     timeout : float, optional
         Maximum time in seconds for VBMicrolensing calculation. Default 300 (5 minutes).
 
@@ -41,6 +42,10 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36, timeout=300):
         If any parameter values are physically invalid.
     """
     
+    # Use default gamma if not provided
+    if gamma is None:
+        gamma = 0.36
+        
     # Parameter validation - catch stupid values before they hang VBM
     if q <= 0 or q > 10:
         raise ValueError(f"Mass ratio q={q} is invalid (must be 0 < q <= 10)")

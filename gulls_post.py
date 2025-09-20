@@ -308,7 +308,7 @@ def run(args):
 
     fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels, normal=normal, unit_cube=unit_cube)
     fit_obj.plot_chains = plot_chains
-    vbm = VBMicrolensing(); vbm.a1 = 0.36
+    vbm = VBMicrolensing()  # Initialize VBM without setting a1 yet - will be set per event
 
     if not os.path.exists(path + "posteriors/"):
         os.mkdir(path + "posteriors/")
@@ -455,6 +455,10 @@ def run(args):
                 # Draw caustics using separation near t_ref
                 s_use = float(truths['params'][0])
                 q_use = float(truths['params'][1])
+                
+                # Set gamma from truths or default
+                vbm.a1 = truths.get('Gamma', truths.get('gamma', 0.36))
+                
                 caustics = vbm.Caustics(s_use, q_use)
                 for closed in caustics:
                     axc.plot(closed[0], closed[1], '-', color='blue', ms=1, alpha=0.7)
@@ -515,10 +519,10 @@ def run(args):
                 initial_pos = np.tile(truths["params"][:ndim], (nl, 1))
                 log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                 
-                # Transform log parameters to log space
+                # Transform log parameters to natural log space (ln, not log10)
                 for j in log_indices:
                     if j < initial_pos.shape[1]:  # Safety check
-                        initial_pos[:, j] = np.log10(initial_pos[:, j])
+                        initial_pos[:, j] = np.log(initial_pos[:, j])  # Use ln, not log10
                 
                 # Add scatter in the appropriate space
                 scatter = 1e-4
@@ -584,10 +588,10 @@ def run(args):
                 samples_for_corner = flat_chain_post.copy()
                 log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                 
-                # Transform log parameters back to linear space
+                # Transform log parameters back to linear space (from ln)
                 for j in log_indices:
                     if j < samples_for_corner.shape[1]:  # Safety check
-                        samples_for_corner[:, j] = 10**(samples_for_corner[:, j])
+                        samples_for_corner[:, j] = np.exp(samples_for_corner[:, j])  # Use exp, not 10**
             
             log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]   
             fit_obj.corner_post(samples_for_corner, event_name, path, truths,
@@ -624,10 +628,10 @@ def run(args):
                         samples_final = chain_no_burnin.copy()
                         log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                         
-                        # Transform log parameters back to linear space
+                        # Transform log parameters back to linear space (from ln)
                         for j in log_indices:
                             if j < samples_final.shape[1]:
-                                samples_final[:, j] = 10**(samples_final[:, j])
+                                samples_final[:, j] = np.exp(samples_final[:, j])  # Use exp, not 10**
                 else:
                     # Dynesty samples are already in physical space
                     samples_final = samples_phys

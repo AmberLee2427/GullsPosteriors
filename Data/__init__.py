@@ -523,6 +523,14 @@ class Data:
             # Our order:   [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]
             reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
             model_derivs_reordered = model_derivs_raw[:, reorder_indices]
+            
+            # Convert log10 derivatives to ln derivatives for consistency with GULLS sampling
+            # d/d(ln(x)) = x * d/dx = (ln(10)) * d/d(log10(x))
+            # So to convert log10 derivatives to ln derivatives, multiply by ln(10)
+            log_param_indices = [0, 1, 2, 6]  # [logs, logq, logrho, logtE] in our order
+            for idx in log_param_indices:
+                model_derivs_reordered[:, idx] *= np.log(10)
+            
             self.model_derivatives = model_derivs_reordered  # Keep for backward compatibility
             
             # Build full derivative matrix: [model_params, flux_params]
