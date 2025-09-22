@@ -483,10 +483,9 @@ class Fit:
         current_labels = self.labels if self.labels is not None else full_labels_list[: len(theta)]
         log_indices = [i for i, label in enumerate(current_labels) if label in log_param_names]
 
-        # Apply log -> linear transform 
-        # Note: GULLS uses natural log (ln), not log10, for sampling
+        # Apply log10 -> linear transform only to those indices
         for i in log_indices:
-            params[i] = np.exp(params[i])  # Use exp() for natural log, not 10**
+            params[i] = 10 ** (params[i])
 
         if self.LOM_enabled:
             params[4] %= 2 * np.pi  # alpha

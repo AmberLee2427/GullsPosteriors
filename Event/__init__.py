@@ -22,7 +22,7 @@ class Event:
         t_start: float,
         t_ref: float,
         eps=1e-4,
-        gamma=None,  # Read from truths if available, else default to 0.36
+        gamma=None,  # Will be read from data_obj.gamma (loaded from .prm file)
         LOM_enabled=True,
     ):
         """Instantiate a microlensing event model.
@@ -44,8 +44,8 @@ class Event:
             Reference time defining the orientation of the parallax frame.
         eps : float, optional
             Numerical precision for the magnification calculation.
-        gamma : float, optional
-            Linear limb darkening coefficient.
+        gamma : float
+            Linear limb darkening coefficient (required, read from .prm file).
         LOM_enabled : bool, optional
             If ``True`` include lens orbital motion parameters in the model.
 
@@ -102,11 +102,9 @@ class Event:
         # print('debug Event.__init__: sim_time0: ', self.sim_time0)
         # print('debug Event.__init__: t_ref: ', self.t_ref)
         self.eps = eps
-        # Set gamma from truths if available, otherwise use default
         if gamma is None:
-            self.gamma = truths.get('Gamma', truths.get('gamma', 0.36))
-        else:
-            self.gamma = gamma
+            raise ValueError("gamma parameter is required and must be provided from data_obj.gamma")
+        self.gamma = gamma
         self.mag_obj = None
 
         self.LOM_enabled = LOM_enabled  # NEW: store the flag

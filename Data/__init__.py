@@ -27,6 +27,7 @@ class Data:
         specified directory.
         """
         self.sim_time0 = None
+        self.gamma = 0.36  # Default limb darkening, will be overridden from .prm file
         self.model_derivatives = None
         self._data_path = None
         self._config_file = None
@@ -115,9 +116,15 @@ class Data:
                                 try:
                                     self.sim_time0 = float(line.split('=')[1].strip())
                                     print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
-                                    return
                                 except (ValueError, IndexError):
                                     print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+                            elif line.startswith('LD_GAMMA='):
+                                try:
+                                    self.gamma = float(line.split('=')[1].strip())
+                                    print(f"Loaded limb darkening gamma from {prm_path}: {self.gamma}")
+                                except (ValueError, IndexError):
+                                    print(f"Warning: Could not parse LD_GAMMA from {prm_path}")
+                    return
         
         print("No SIMULATION_ZERO_TIME loaded from .prm file.")
 
@@ -523,14 +530,6 @@ class Data:
             # Our order:   [log10s, log10q, log10rho, u0, alpha, t0, log10tE, piEE, piEN]
             reorder_indices = [4, 5, 6, 2, 3, 0, 1, 8, 7]
             model_derivs_reordered = model_derivs_raw[:, reorder_indices]
-            
-            # Convert log10 derivatives to ln derivatives for consistency with GULLS sampling
-            # d/d(ln(x)) = x * d/dx = (ln(10)) * d/d(log10(x))
-            # So to convert log10 derivatives to ln derivatives, multiply by ln(10)
-            log_param_indices = [0, 1, 2, 6]  # [logs, logq, logrho, logtE] in our order
-            for idx in log_param_indices:
-                model_derivs_reordered[:, idx] *= np.log(10)
-            
             self.model_derivatives = model_derivs_reordered  # Keep for backward compatibility
             
             # Build full derivative matrix: [model_params, flux_params]
@@ -774,6 +773,14 @@ class Data:
             & (master["SubRun"] == int(sub_run))
             & (master["Field"] == int(field))
         ].iloc[0]
+
+        # Try to read gamma from master file if we have the default value
+        if self.gamma == 0.36 and 'LDgamma' in truths:
+            try:
+                self.gamma = float(truths['LDgamma'])
+                print(f"Loaded limb darkening gamma from master file: {self.gamma}")
+            except (ValueError, TypeError):
+                print(f"Warning: Could not parse LDgamma from master file: {truths['LDgamma']}")
 
         # print(self.sim_time0)
 

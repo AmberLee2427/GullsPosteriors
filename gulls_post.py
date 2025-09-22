@@ -308,7 +308,7 @@ def run(args):
 
     fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels, normal=normal, unit_cube=unit_cube)
     fit_obj.plot_chains = plot_chains
-    vbm = VBMicrolensing()  # Initialize VBM without setting a1 yet - will be set per event
+    vbm = VBMicrolensing(); vbm.a1 = 0.36
 
     if not os.path.exists(path + "posteriors/"):
         os.mkdir(path + "posteriors/")
@@ -360,11 +360,11 @@ def run(args):
                                 truths["tcroin"], tu_data, piE, epochs)
         parallax_obj.update_piE_NE(truths["piEN"], truths["piEE"])
 
-        event_t0 = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["t0lens1"], LOM_enabled=LOM_enabled)
-        event_tc = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["tcroin"], LOM_enabled=LOM_enabled)
+        event_t0 = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["t0lens1"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
+        event_tc = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["tcroin"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
         s, q, u0, alpha = truths["params"][0], truths["params"][1], truths["params"][3], truths["params"][4]
         tc_calc = event_tc.croin(t0, u0, s, q, alpha, tE)
-        event_tref = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, tc_calc, LOM_enabled=LOM_enabled)
+        event_tref = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, tc_calc, gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
 
         # Choose tref by chi^2
         chi2_ew_t0, _ = fit_obj.get_chi2(event_t0, truths["params"]) 
@@ -455,10 +455,6 @@ def run(args):
                 # Draw caustics using separation near t_ref
                 s_use = float(truths['params'][0])
                 q_use = float(truths['params'][1])
-                
-                # Set gamma from truths or default
-                vbm.a1 = truths.get('Gamma', truths.get('gamma', 0.36))
-                
                 caustics = vbm.Caustics(s_use, q_use)
                 for closed in caustics:
                     axc.plot(closed[0], closed[1], '-', color='blue', ms=1, alpha=0.7)
@@ -495,7 +491,7 @@ def run(args):
             pts = np.where((current_t > tmin_fit) & (current_t < tmax_fit))
             data_cropped[obs_key] = data[obs_key].T[pts].T
 
-        event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=LOM_enabled)
+        event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
 
         # Save sampling parameters to .prm file before starting
         # add normal and unit_cube to the fit object init
@@ -519,10 +515,10 @@ def run(args):
                 initial_pos = np.tile(truths["params"][:ndim], (nl, 1))
                 log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                 
-                # Transform log parameters to natural log space (ln, not log10)
+                # Transform log parameters to log space
                 for j in log_indices:
                     if j < initial_pos.shape[1]:  # Safety check
-                        initial_pos[:, j] = np.log(initial_pos[:, j])  # Use ln, not log10
+                        initial_pos[:, j] = np.log10(initial_pos[:, j])
                 
                 # Add scatter in the appropriate space
                 scatter = 1e-4
@@ -588,10 +584,10 @@ def run(args):
                 samples_for_corner = flat_chain_post.copy()
                 log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                 
-                # Transform log parameters back to linear space (from ln)
+                # Transform log parameters back to linear space
                 for j in log_indices:
                     if j < samples_for_corner.shape[1]:  # Safety check
-                        samples_for_corner[:, j] = np.exp(samples_for_corner[:, j])  # Use exp, not 10**
+                        samples_for_corner[:, j] = 10**(samples_for_corner[:, j])
             
             log_param_names = ["s","q","rho","tE","period"] if LOM_enabled else ["s","q","rho","tE"]   
             fit_obj.corner_post(samples_for_corner, event_name, path, truths,
@@ -628,10 +624,10 @@ def run(args):
                         samples_final = chain_no_burnin.copy()
                         log_indices = [0,1,2,6,11] if LOM_enabled else [0,1,2,6]
                         
-                        # Transform log parameters back to linear space (from ln)
+                        # Transform log parameters back to linear space
                         for j in log_indices:
                             if j < samples_final.shape[1]:
-                                samples_final[:, j] = np.exp(samples_final[:, j])  # Use exp, not 10**
+                                samples_final[:, j] = 10**(samples_final[:, j])
                 else:
                     # Dynesty samples are already in physical space
                     samples_final = samples_phys
@@ -675,9 +671,9 @@ def run(args):
                     # F = fs*A + (1-fs), so A = (F - (1-fs)) / fs = (F - fb) / fs
                     temp_params = median_params.copy()
                     if LOM_enabled and len(temp_params) >= 12:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
                     else:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
                     
                     temp_event.set_params(temp_params)
                     A_model = temp_event.get_magnification(t_obs, obs)
@@ -712,9 +708,9 @@ def run(args):
                 
                 # Median model
                 if LOM_enabled and len(median_params) >= 12:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
                 else:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
                 temp_event.set_params(median_params)
                 A_fine_median = temp_event.get_magnification(t_fine, 0)
                 ax1.plot(t_fine, A_fine_median, '-', color='black', linewidth=2, label='Median posterior', zorder=3)
@@ -722,9 +718,9 @@ def run(args):
                 # Random posterior samples (transparent)
                 for j, sample_params in enumerate(random_samples):
                     if LOM_enabled and len(sample_params) >= 12:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
                     else:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
                     temp_event.set_params(sample_params)
                     A_fine_sample = temp_event.get_magnification(t_fine, 0)
                     label_str = 'Posterior samples' if j == 0 else None
@@ -733,9 +729,9 @@ def run(args):
                 
                 # Truth model for comparison
                 if LOM_enabled and len(truths["params"]) >= 12:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=True)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
                 else:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, LOM_enabled=False)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
                 temp_event.set_params(truths["params"][:ndim])
                 A_fine_truth = temp_event.get_magnification(t_fine, 0)
                 ax1.plot(t_fine, A_fine_truth, '--', color='green', linewidth=2, label='Truth', zorder=3)

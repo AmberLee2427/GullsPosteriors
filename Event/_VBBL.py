@@ -2,7 +2,7 @@ import numpy as np
 import VBBinaryLensing
 
 
-def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36):
+def magnification(self, ss, q, u1, u2, rho, eps=1e-4):
     """Return the binary-lens magnification for an array of separations.
 
     Parameters
@@ -19,20 +19,22 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=0.36):
         Angular source radius in units of ``theta_E``.
     eps : float, optional
         Relative tolerance used by :mod:`VBBinaryLensing`. Default is ``1e-4``.
-    gamma : float, optional
-        Limb-darkening coefficient ``a1`` passed to :mod:`VBBinaryLensing`.
 
     Returns
     -------
     ndarray
         Magnification for each element of ``ss``.
+        
+    Notes
+    -----
+    The limb-darkening coefficient gamma is read from self.gamma (loaded from the .prm file).
     """
 
     if self.mag_obj is None:
         self.mag_obj = VBBinaryLensing.VBBinaryLensing()
 
     self.mag_obj.RelTol = eps
-    self.mag_obj.a1 = gamma
+    self.mag_obj.a1 = self.gamma
 
     mag = np.zeros_like(ss)
 

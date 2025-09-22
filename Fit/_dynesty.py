@@ -85,55 +85,55 @@ def prior_transform(
             prange_val = prange_log[i]
             if fisher_uncertainties is not None:
                 sigma = fisher_uncertainties[u_idx]
-                log_true = np.log(true_val)  # Use natural log
+                log_true = np.log10(true_val)
                 # Ensure log_sigma is calculated correctly for positive/negative deviations
                 # For simplicity, assuming symmetric log_sigma based on (true_val + sigma)
-                # A more robust approach might consider log(true_val - sigma) if applicable
-                log_sigma = np.log(true_val + sigma) - log_true  # Use natural log
+                # A more robust approach might consider log10(true_val - sigma) if applicable
+                log_sigma = np.log10(true_val + sigma) - log_true
                 if normal:
                     loc = log_true
                     scale = 4 * log_sigma # Scale for 4-sigma range in log space
-                    theta[u_idx] = np.exp(norm.ppf(u[u_idx], loc=loc, scale=scale))  # Use exp for natural log
+                    theta[u_idx] = 10 ** norm.ppf(u[u_idx], loc=loc, scale=scale)
                 else:
                     min_log = log_true - 4 * log_sigma
                     max_log = log_true + 4 * log_sigma
-                    theta[u_idx] = np.exp(min_log + (max_log - min_log) * u[u_idx])  # Use exp for natural log
+                    theta[u_idx] = 10 ** (min_log + (max_log - min_log) * u[u_idx])
             elif normal:
-                loc = np.log(true_val)  # Use natural log
+                loc = np.log10(true_val)
                 scale = prange_val / 2.0 # Scale for prange_val/2 width in log space
-                theta[u_idx] = np.exp(norm.ppf(u[u_idx], loc=loc, scale=scale))  # Use exp for natural log
+                theta[u_idx] = 10 ** norm.ppf(u[u_idx], loc=loc, scale=scale)
             else:
-                min_log = np.log(true_val) - prange_val / 2.0  # Use natural log
-                max_log = np.log(true_val) + prange_val / 2.0  # Use natural log
-                theta[u_idx] = np.exp(min_log + (max_log - min_log) * u[u_idx])  # Use exp for natural log
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                theta[u_idx] = 10 ** (min_log + (max_log - min_log) * u[u_idx])
     else:  # Multiple samples (walkers)
         for i, u_idx in enumerate(u_log_indices):
             true_val = true_log_values[i]
             prange_val = prange_log[i]
             if fisher_uncertainties is not None:
                 sigma = fisher_uncertainties[u_idx]
-                log_true = np.log(true_val)  # Use natural log
-                log_sigma = np.log(true_val + sigma) - log_true  # Use natural log
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
                 if normal:
                     loc = log_true
                     scale = 4 * log_sigma
-                    theta[:, u_idx] = np.exp(norm.ppf(u[:, u_idx], loc=loc, scale=scale))  # Use exp for natural log
+                    theta[:, u_idx] = 10 ** norm.ppf(u[:, u_idx], loc=loc, scale=scale)
                 else:
                     min_log = log_true - 4 * log_sigma
                     max_log = log_true + 4 * log_sigma
-                    theta[:, u_idx] = np.exp(min_log + (max_log - min_log) * u[:, u_idx])  # Use exp for natural log
+                    theta[:, u_idx] = 10 ** (min_log + (max_log - min_log) * u[:, u_idx])
             elif normal:
-                loc = np.log(true_val)  # Use natural log
+                loc = np.log10(true_val)
                 scale = prange_val / 2.0
-                theta[:, u_idx] = np.exp(norm.ppf(
+                theta[:, u_idx] = 10 ** norm.ppf(
                     u[:, u_idx], loc=loc, scale=scale
-                ))  # Use exp for natural log
+                )
             else:
-                min_log = np.log(true_val) - prange_val / 2.0  # Use natural log
-                max_log = np.log(true_val) + prange_val / 2.0  # Use natural log
-                theta[:, u_idx] = np.exp(
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
+                theta[:, u_idx] = 10 ** (
                     min_log + (max_log - min_log) * u[:, u_idx]
-                )  # Use exp for natural log
+                )
 
     # --- Transform linear parameters ---
     # prange_linear is already correctly sized
@@ -281,11 +281,11 @@ def detransform_theta(self, theta, truths_array, prange_linear, prange_log, norm
         for i, u_idx in enumerate(u_log_indices):
             true_val = true_log_values[i]
             prange_val = prange_log[i]
-            log_theta = np.log(theta[u_idx])  # Use natural log
+            log_theta = np.log10(theta[u_idx])
             if fisher_uncertainties is not None:
                 sigma = fisher_uncertainties[u_idx]
-                log_true = np.log(true_val)  # Use natural log
-                log_sigma = np.log(true_val + sigma) - log_true  # Use natural log
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
                 if normal:
                     loc = log_true
                     scale = 4 * log_sigma
@@ -295,22 +295,22 @@ def detransform_theta(self, theta, truths_array, prange_linear, prange_log, norm
                     max_log = log_true + 4 * log_sigma
                     u[u_idx] = (log_theta - min_log) / (max_log - min_log)
             elif normal:
-                loc = np.log(true_val)  # Use natural log
+                loc = np.log10(true_val)
                 scale = prange_val / 2.0
                 u[u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
             else:
-                min_log = np.log(true_val) - prange_val / 2.0  # Use natural log
-                max_log = np.log(true_val) + prange_val / 2.0  # Use natural log
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
                 u[u_idx] = (log_theta - min_log) / (max_log - min_log)
     else:  # Multiple samples (walkers)
         for i, u_idx in enumerate(u_log_indices):
             true_val = true_log_values[i]
             prange_val = prange_log[i]
-            log_theta = np.log(theta[:, u_idx])  # Use natural log
+            log_theta = np.log10(theta[:, u_idx])
             if fisher_uncertainties is not None:
                 sigma = fisher_uncertainties[u_idx]
-                log_true = np.log(true_val)  # Use natural log
-                log_sigma = np.log(true_val + sigma) - log_true  # Use natural log
+                log_true = np.log10(true_val)
+                log_sigma = np.log10(true_val + sigma) - log_true
                 if normal:
                     loc = log_true
                     scale = 4 * log_sigma
@@ -320,12 +320,12 @@ def detransform_theta(self, theta, truths_array, prange_linear, prange_log, norm
                     max_log = log_true + 4 * log_sigma
                     u[:, u_idx] = (log_theta - min_log) / (max_log - min_log)
             elif normal:
-                loc = np.log(true_val)  # Use natural log
+                loc = np.log10(true_val)
                 scale = prange_val / 2.0
                 u[:, u_idx] = norm.cdf(log_theta, loc=loc, scale=scale)
             else:
-                min_log = np.log(true_val) - prange_val / 2.0  # Use natural log
-                max_log = np.log(true_val) + prange_val / 2.0  # Use natural log
+                min_log = np.log10(true_val) - prange_val / 2.0
+                max_log = np.log10(true_val) + prange_val / 2.0
                 u[:, u_idx] = (log_theta - min_log) / (max_log - min_log)
 
     # --- Invert linear parameters ---

@@ -8,7 +8,7 @@ class TimeoutError(Exception):
 def timeout_handler(signum, frame):
     raise TimeoutError("VBMicrolensing calculation timed out")
 
-def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=None, timeout=300):
+def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
     """Return the binary-lens magnification using :mod:`VBMicrolensing`.
 
     Parameters
@@ -25,9 +25,6 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=None, timeout=300):
         Angular radius of the source in units of ``theta_E``.
     eps : float, optional
         Relative tolerance passed to :mod:`VBMicrolensing`. Default ``1e-4``.
-    gamma : float, optional
-        Limb-darkening coefficient ``a1`` for :mod:`VBMicrolensing`. 
-        If None, uses 0.36 as default.
     timeout : float, optional
         Maximum time in seconds for VBMicrolensing calculation. Default 300 (5 minutes).
 
@@ -40,12 +37,12 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=None, timeout=300):
     ------
     ValueError
         If any parameter values are physically invalid.
+        
+    Notes
+    -----
+    The limb-darkening coefficient gamma is read from self.gamma (loaded from the .prm file).
     """
     
-    # Use default gamma if not provided
-    if gamma is None:
-        gamma = 0.36
-        
     # Parameter validation - catch stupid values before they hang VBM
     if q <= 0 or q > 10:
         raise ValueError(f"Mass ratio q={q} is invalid (must be 0 < q <= 10)")
@@ -59,13 +56,13 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, gamma=None, timeout=300):
     if eps <= 0 or eps > 1e-2:
         raise ValueError(f"Tolerance eps={eps} is invalid (must be 0 < eps <= 0.01)")
     
-    if gamma < 0 or gamma > 1:
-        raise ValueError(f"Limb darkening gamma={gamma} is invalid (must be 0 <= gamma <= 1)")
+    if self.gamma < 0 or self.gamma > 1:
+        raise ValueError(f"Limb darkening gamma={self.gamma} is invalid (must be 0 <= gamma <= 1)")
 
     if self.mag_obj is None:
         self.mag_obj = VBMicrolensing.VBMicrolensing()
 
-    self.mag_obj.a1 = gamma
+    self.mag_obj.a1 = self.gamma
     self.mag_obj.RelTol = eps
 
     mag = np.zeros_like(ss)
