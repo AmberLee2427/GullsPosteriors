@@ -648,18 +648,14 @@ class Event:
         # print('Debug Event.get_magnification: tref', t_ref)
         # print('Debug Event.get_magnification: t', t)
 
-        try:
-            A = self.magnification(
-                ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
-            )
-        except:
-            print("Warning: Magnification calculation failed or timed out")
-            return None
-
-        # Handle timeout/failure from VBMicrolensing
-        if A is None:
-            print("Warning: Magnification calculation failed or timed out, returning NaN array")
-            return None
+        # Calculate magnification - let errors propagate up for fast failure
+        A = self.magnification(
+            ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
+        )
+        
+        # Validate magnification results - should be real numbers
+        if A is None or not np.isfinite(A).all() or len(A) == 0:
+            raise RuntimeError(f"Magnification calculation returned invalid results: {A}. Check parameters and library installation.")
 
         # vbbl has CoM O
 

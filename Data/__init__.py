@@ -426,7 +426,7 @@ class Data:
         with open(data_file, 'r') as f:
             lines = []
             for i, line in enumerate(f):
-                if i >= 15:  # Read a few lines after the header
+                if i >= 20:  # Read a few lines after the header
                     break
                 lines.append(line.strip())
         

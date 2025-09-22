@@ -1,5 +1,10 @@
 import numpy as np
-import VBBinaryLensing
+try:
+    import VBBinaryLensing
+except ImportError as e:
+    print(f"Warning: VBBinaryLensing module not available: {e}")
+    print("Magnification calculations will fail. Ensure VBBinaryLensing is properly installed.")
+    VBBinaryLensing = None
 
 
 def magnification(self, ss, q, u1, u2, rho, eps=1e-4):
@@ -25,10 +30,21 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4):
     ndarray
         Magnification for each element of ``ss``.
         
+    Raises
+    ------
+    ImportError
+        If VBBinaryLensing module is not available.
+    RuntimeError
+        If magnification calculation fails.
+        
     Notes
     -----
     The limb-darkening coefficient gamma is read from self.gamma (loaded from the .prm file).
     """
+
+    # FAIL FAST: If VBBinaryLensing is missing, this is a fatal configuration error
+    if VBBinaryLensing is None:
+        raise ImportError("VBBinaryLensing module is required but not available. Install with: pip install VBBinaryLensing")
 
     if self.mag_obj is None:
         self.mag_obj = VBBinaryLensing.VBBinaryLensing()
@@ -38,7 +54,10 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4):
 
     mag = np.zeros_like(ss)
 
-    for i in range(len(ss)):
-        mag[i] = self.mag_obj.BinaryMag2(ss[i], q, u1[i], u2[i], rho)
-
-    return np.array(mag)
+    try:
+        for i in range(len(ss)):
+            mag[i] = self.mag_obj.BinaryMag2(ss[i], q, u1[i], u2[i], rho)
+        
+        return np.array(mag)
+    except Exception as e:
+        raise RuntimeError(f"VBBinaryLensing calculation failed: {e}. This indicates a serious problem with the magnification calculation.")

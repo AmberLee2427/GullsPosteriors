@@ -1,5 +1,10 @@
 import numpy as np
-import VBMicrolensing
+try:
+    import VBMicrolensing
+except ImportError as e:
+    print(f"Warning: VBMicrolensing module not available: {e}")
+    print("Magnification calculations will fail. Ensure VBMicrolensing is properly installed.")
+    VBMicrolensing = None
 import signal
 
 class TimeoutError(Exception):
@@ -30,18 +35,26 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
 
     Returns
     -------
-    ndarray or None
-        Magnification for each value of ``ss``, or None if calculation timed out.
+    ndarray
+        Magnification for each value of ``ss``.
     
     Raises
     ------
+    ImportError
+        If VBMicrolensing module is not available.
     ValueError
         If any parameter values are physically invalid.
+    RuntimeError
+        If magnification calculation fails or times out.
         
     Notes
     -----
     The limb-darkening coefficient gamma is read from self.gamma (loaded from the .prm file).
     """
+    
+    # FAIL FAST: If VBMicrolensing is missing, this is a fatal configuration error
+    if VBMicrolensing is None:
+        raise ImportError("VBMicrolensing module is required but not available. Install with: pip install VBMicrolensing")
     
     # Parameter validation - catch stupid values before they hang VBM
     if q <= 0 or q > 10:
@@ -84,13 +97,10 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
         return np.array(mag)
         
     except TimeoutError:
-        print(f"Warning: VBMicrolensing calculation timed out after {timeout} seconds")
+        raise RuntimeError(f"VBMicrolensing calculation timed out after {timeout} seconds. This suggests the parameters may be problematic or the system is overloaded.")
+    except Exception as e:
+        # Clear alarm on any other exception and fail hard
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
-        return None
-    except:
-        # Clear alarm on any other exception, but re-raise the original error
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-        raise
+        raise RuntimeError(f"VBMicrolensing calculation failed: {e}. This indicates a serious problem with the magnification calculation.")  
 

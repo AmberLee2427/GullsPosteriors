@@ -23,7 +23,11 @@ from Parallax import Parallax
 from Event import Event
 from Fit import Fit
 from Orbit import Orbit
-from VBMicrolensing import VBMicrolensing
+try:
+    from VBMicrolensing import VBMicrolensing
+except ImportError:
+    print("Warning: VBMicrolensing not available. Some functionality may be limited.")
+    VBMicrolensing = None
 
 
 def parse_args(argv=None):
@@ -370,6 +374,17 @@ def run(args):
         chi2_ew_t0, _ = fit_obj.get_chi2(event_t0, truths["params"]) 
         chi2_ew_tc, _ = fit_obj.get_chi2(event_tc, truths["params"]) 
         chi2_ew_tref, _ = fit_obj.get_chi2(event_tref, truths["params"], measured_flux=False)
+        
+        # FAIL FAST: If magnification calculations failed with truth values, something is seriously wrong
+        if chi2_ew_t0 is None or chi2_ew_tc is None or chi2_ew_tref is None:
+            print("FATAL ERROR: Magnification calculations failed with truth values!")
+            print("This indicates a serious problem:")
+            print("  - VBMicrolensing/VBBinaryLensing libraries missing or broken")
+            print("  - Truth parameter values are invalid/unphysical") 
+            print("  - System configuration error")
+            print("The code cannot proceed without working magnification calculations.")
+            sys.exit(1)
+        
         tmin = np.min([t0 - 2.0 * tE, tc_calc - 2.0 * tE]); tmax = np.max([t0 + 2.0 * tE, tc_calc + 2.0 * tE])
         points = np.where(np.logical_and(t_data[0] > tmin, t_data[0] < tmax))
         chi2_list = [np.sum(chi2_ew_t0[0][points]), np.sum(chi2_ew_tc[0][points]), np.sum(chi2_ew_tref[0][points])]
