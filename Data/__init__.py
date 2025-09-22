@@ -897,3 +897,20 @@ class Data:
             truths['lcname'] = truths[lcname_col]
         
         return truths
+    
+    @staticmethod
+    def make_master_csvs_from_hdf5(data_file, output_dir, chunk_size=10000):
+        """Create master CSV files from chunks of an HDF5 data file.
+
+        Parameters
+        ----------
+        data_file : str
+            Path to the HDF5 data file.
+        output_dir : str
+            Directory to save the master CSV files.
+        chunk_size : int, optional
+            Number of events per CSV file, by default 10000.
+        """
+        chunks = pd.read_hdf(data_file, chunksize=chunk_size)
+        for i, chunk in enumerate(chunks):
+            chunk.to_csv(os.path.join(output_dir, f"master_{i}.csv"), index=False)
