@@ -191,7 +191,7 @@ class Data:
         else:
             # Look for master file
             for f_name in files: # Use f_name to avoid conflict with 'file_lc' later
-                if f_name.endswith(('.csv', '.out')):
+                if f_name.endswith(('.csv', '.out', '.out.csv', '.out.hdf5', 'outh5')):
                     master_file = path + f_name
                     print(f"\nFound master file: {master_file}")
                     response = input("Use this file as master file? (y/n): ")
