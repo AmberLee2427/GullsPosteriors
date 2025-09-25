@@ -253,7 +253,11 @@ dependencies:
   - zstd=1.5.7=h6491c7d_2
   - pip:
       - iniconfig==2.1.0
+      - ipympl==0.9.7
+      - narwhals==2.5.0
+      - plotly==6.3.0
       - pluggy==1.6.0
+      - pybind11==3.0.1
       - pytest==8.4.1
       - vbmicrolensing==5.1.1
 prefix: /opt/anaconda3/envs/GullsPosteriors

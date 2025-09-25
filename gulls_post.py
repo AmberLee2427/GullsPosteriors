@@ -68,10 +68,14 @@ Prior types:
         """)
 
     # Required arguments
-    p.add_argument("nevents", type=int, 
-                   help="Number of events to process from the dataset")
+    p.add_argument("nevents", type=int, nargs="?", default=None,
+                   help="Number of events to process (required unless --events-file is used)")
     p.add_argument("path", 
                    help="Directory containing data challenge files (.lc, .hdf5)")
+
+    event_group = p.add_argument_group("Event Selection")
+    event_group.add_argument("--events-file", dest="events_file", default=None,
+                             help="Path to a text file listing events to process (one per line)")
 
     # Sampling configuration
     sampling_group = p.add_argument_group("Sampling Configuration")
@@ -113,6 +117,20 @@ Prior types:
                              help="Event sorting method (default: alphanumeric)")
 
     return p.parse_args(argv)
+
+
+def load_event_list(file_path):
+    resolved_path = os.path.expanduser(os.path.expandvars(file_path))
+    if not os.path.isfile(resolved_path):
+        sys.exit(f"Event list file '{file_path}' does not exist.")
+
+    with open(resolved_path, 'r') as handle:
+        events = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith('#')]
+
+    if not events:
+        sys.exit(f"Event list file '{file_path}' did not contain any usable entries.")
+
+    return events
 
 
 def derive_plot_flags(args):
@@ -290,6 +308,17 @@ def run(args):
     if not path.endswith("/"):
         path += "/"
 
+    if args.events_file:
+        event_identifiers = load_event_list(args.events_file)
+        total_events = len(event_identifiers)
+        args.nevents = total_events
+        print(f"Loaded {total_events} event(s) from {args.events_file}.")
+    else:
+        if args.nevents is None:
+            sys.exit("Must specify NEVENTS when --events-file is not provided.")
+        total_events = args.nevents
+        event_identifiers = None
+
     LOM_enabled = not args.no_lom
     print("Lens Orbit Motion (LOM) is {}.".format("ENABLED" if LOM_enabled else "DISABLED"))
     print("{} Fisher uncertainties to inform prior ranges.".format(
@@ -318,13 +347,23 @@ def run(args):
         os.mkdir(path + "posteriors/")
 
     # Process events
-    for i in range(args.nevents):
+    for i in range(total_events):
         fit_obj.current_event = None
         data_obj = Data()
-        event_name, truths_series, data = data_obj.new_event(path, args.sort)
-        if event_name is None:
-            print(f"No more new events to process after {i} events. Exiting.")
-            break
+
+        if event_identifiers is not None:
+            target_identifier = event_identifiers[i]
+            try:
+                event_name, truths_series, data = data_obj.load_event_by_identifier(path, target_identifier)
+            except FileNotFoundError as exc:
+                sys.exit(str(exc))
+            except ValueError as exc:
+                sys.exit(str(exc))
+        else:
+            event_name, truths_series, data = data_obj.new_event(path, args.sort)
+            if event_name is None:
+                print(f"No more new events to process after {i} events. Exiting.")
+                break
         truths = truths_series.to_dict()
         if 'params' in truths and isinstance(truths['params'], list):
             truths['params'] = np.array(truths['params'])
@@ -788,4 +827,3 @@ def run(args):
 if __name__ == "__main__":
     args = parse_args()
     run(args)
-

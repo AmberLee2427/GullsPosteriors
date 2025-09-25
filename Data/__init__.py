@@ -66,7 +66,7 @@ class Data:
 
     def _load_prm_time_correction(self, data_dir=None):
         """Load time correction from prm file if it exists.
-        
+
         Looks for a `.prm` file in the current directory and parent directories
         up to 3 levels up. If found, uses `SIMULATION_ZERO_TIME` as the time correction.
         """
@@ -129,6 +129,153 @@ class Data:
         print("No SIMULATION_ZERO_TIME loaded from .prm file.")
 
 
+    def _initialize_directory(self, path):
+        if not os.path.isdir(path):
+            raise FileNotFoundError(f"Data directory '{path}' does not exist or is not a directory.")
+
+        files = sorted(os.listdir(path))
+        self.model_derivatives = None
+        self._data_path = path
+        self._load_config(path)
+
+        normalized_path = path if path.endswith(os.sep) else path + os.sep
+        run_list_file_path = self._ensure_run_tracking_files(normalized_path)
+        master_file = self._resolve_master_file(normalized_path, files)
+
+        return normalized_path, files, master_file, run_list_file_path
+
+
+    def _ensure_run_tracking_files(self, path):
+        run_list_file_path = os.path.join(path, "emcee_run_list.txt")
+        if not os.path.exists(run_list_file_path):
+            open(run_list_file_path, 'w').close()
+
+        complete_file_path = os.path.join(path, "emcee_complete.txt")
+        if not os.path.exists(complete_file_path):
+            open(complete_file_path, 'w').close()
+
+        return run_list_file_path
+
+
+    def _resolve_master_file(self, path, files):
+        master_file = None
+        if self._config and self._config.get('master_file') and os.path.exists(self._config['master_file']):
+            master_file = self._config['master_file']
+        else:
+            for f_name in files:
+                if f_name.endswith(('.csv', '.out', '.out.csv', '.out.hdf5', 'outh5')):
+                    candidate = os.path.join(path, f_name)
+                    print(f"\nFound master file: {candidate}")
+                    response = input("Use this file as master file? (y/n): ")
+                    if response.lower() != 'y':
+                        print("Skipping this master file")
+                        continue
+
+                    self._config['master_file'] = candidate
+                    self._save_config()
+                    master_file = candidate
+                    break
+            if master_file is None:
+                raise FileNotFoundError("No master file found or selected in the specified path. Cannot proceed.")
+
+        return master_file
+
+
+    def _read_run_list(self, run_list_file_path):
+        entries = []
+        if os.path.exists(run_list_file_path) and os.path.getsize(run_list_file_path) > 0:
+            with open(run_list_file_path, 'r') as handle:
+                for line in handle:
+                    stripped = line.strip()
+                    if stripped:
+                        entries.append(stripped)
+        if entries:
+            return np.array(entries, dtype=str)
+        return np.array([], dtype=str)
+
+
+    def _write_run_list(self, run_list_file_path, entries):
+        with open(run_list_file_path, 'w') as handle:
+            for entry in entries:
+                handle.write(f"{entry}\n")
+
+
+    def _append_to_run_list(self, run_list_file_path, current_entries, entry):
+        if isinstance(current_entries, np.ndarray):
+            entries_list = current_entries.tolist()
+        else:
+            entries_list = list(current_entries)
+
+        if entry in entries_list:
+            return np.array(entries_list, dtype=str)
+
+        entries_list.append(entry)
+        self._write_run_list(run_list_file_path, entries_list)
+        return np.array(entries_list, dtype=str)
+
+
+    def _load_event_from_lcfile(self, path, master_file, lc_filename):
+        data_file = os.path.join(path, lc_filename)
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Light curve file '{lc_filename}' not found in '{path}'.")
+
+        data = self.load_data(data_file)
+
+        lc_file_name = lc_filename.split(".")[0]
+        event_identifiers = lc_file_name.split("_")
+        if len(event_identifiers) < 3:
+            raise ValueError(f"Unrecognized light curve file naming convention: '{lc_filename}'.")
+
+        event_id = event_identifiers[-1]
+        sub_run = event_identifiers[-3]
+        field = event_identifiers[-2]
+
+        event_name = f"{field}_{sub_run}_{event_id}"
+
+        obs0_data = data[0].copy()
+        simt = obs0_data[7]
+        bjd = obs0_data[0]
+
+        truths = self.get_params(
+            master_file, event_id, sub_run, field, simt, bjd
+        )
+
+        if (lc_filename != truths["lcname"]):
+            print(f"WARNING: Light curve file name mismatch for event {event_name}:")
+            print(f"  File: {lc_filename}")
+            print(f"  Truths 'lcname': {truths['lcname']}")
+            if len(lc_filename) != len(truths["lcname"]):
+                print(f"  Length mismatch: {len(lc_filename)} != {len(truths['lcname'])}")
+            print("  Proceeding with processing despite mismatch.")
+        else:
+            print("Data file and true params 'lcname' match.")
+
+        return event_name, truths, data
+
+
+    def _resolve_lc_candidate(self, identifier, lc_files):
+        if identifier.endswith('.det.lc'):
+            if identifier in lc_files:
+                return identifier
+            raise FileNotFoundError(f"Requested light curve '{identifier}' not found in directory.")
+
+        matches = [f for f in lc_files if identifier in f]
+        if not matches:
+            raise FileNotFoundError(f"No light curve found matching identifier '{identifier}'.")
+
+        if len(matches) == 1:
+            return matches[0]
+
+        suffix_matches = [f for f in matches if f.split('.')[0].endswith(identifier)]
+        if len(suffix_matches) == 1:
+            return suffix_matches[0]
+
+        raise ValueError(
+            f"Identifier '{identifier}' matched multiple light curves: {matches}. "
+            "Provide a more specific name (e.g., full .det.lc filename)."
+        )
+
+
     def new_event(self, path, sort="alphanumeric"):
         r"""Return the next lightcurve and its true parameters.
 
@@ -161,132 +308,63 @@ class Data:
         ValueError
             If master file naming convention is invalid.
         """
-        # Initialize return values to None
         event_name, truths, data = None, None, None
 
-        files = os.listdir(path)
-        self.model_derivatives = None
-        self._data_path = path
-        self._load_config(path) # Load config specific to the data path
-        files = sorted(files)
+        normalized_path, files, master_file, run_list_file_path = self._initialize_directory(path)
 
-        if path[-1] != "/":
-            path = path + "/"
-
-        run_list_file_path = path + "emcee_run_list.txt"
-        if not os.path.exists(run_list_file_path):
-            # Create an empty run list file if it doesn't exist
-            np.savetxt(run_list_file_path, np.array([]), fmt="%s")
-
-        if not os.path.exists(
-            path + "emcee_complete.txt"
-        ):  # if the complete list doesn't exist, create it
-            complete_list = np.array([])
-            np.savetxt(path + "emcee_complete.txt", complete_list, fmt="%s")
-
-        # Check if we have a saved master file path
-        master_file = None # Initialize master_file
-        if self._config and self._config.get('master_file') and os.path.exists(self._config['master_file']):
-            master_file = self._config['master_file']
-        else:
-            # Look for master file
-            for f_name in files: # Use f_name to avoid conflict with 'file_lc' later
-                if f_name.endswith(('.csv', '.out', '.out.csv', '.out.hdf5', 'outh5')):
-                    master_file = path + f_name
-                    print(f"\nFound master file: {master_file}")
-                    response = input("Use this file as master file? (y/n): ")
-                    if response.lower() != 'y':
-                        print("Skipping this master file")
-                        master_file = None # Reset if skipped
-                        continue
-                    
-                    # Save the path if user confirms
-                    self._config['master_file'] = master_file
-                    self._save_config()
-                    break
-            if master_file is None:
-                raise FileNotFoundError("No master file found or selected in the specified path. Cannot proceed.")
-
-        # Filter for light curve files and check if any exist
         lc_files_candidates = [f for f in files if "det.lc" in f]
         if not lc_files_candidates:
-            raise FileNotFoundError(f"No light curve files (.det.lc) found in the directory: '{path}'. Cannot proceed.")
+            raise FileNotFoundError(
+                f"No light curve files (.det.lc) found in the directory: '{normalized_path}'. Cannot proceed."
+            )
 
-        found_event_to_process = False # Flag to indicate if a new event was successfully processed
+        if sort != "alphanumeric":
+            raise ValueError("Only 'alphanumeric' sorting is currently supported.")
 
-        if sort == "alphanumeric":
-            for f_lc_candidate in sorted(lc_files_candidates): # Iterate only over .det.lc files
-                # --- Robustly load run_list ---
-                current_run_list = []
-                if os.path.exists(run_list_file_path) and os.path.getsize(run_list_file_path) > 0:
-                    with open(run_list_file_path, 'r') as f:
-                        for line in f:
-                            stripped_line = line.strip()
-                            if stripped_line: # Only add non-empty lines
-                                current_run_list.append(stripped_line)
-                current_run_list = np.array(current_run_list, dtype=str) # Ensure it's a NumPy array of strings
-                # --- End robust load ---
+        current_run_list = self._read_run_list(run_list_file_path)
+        found_event_to_process = False
 
-                # --- Debug prints ---
-                print(f"DEBUG: Current run_list: {current_run_list}")
-                print(f"DEBUG: Candidate file: {f_lc_candidate}")
-                print(f"DEBUG: Is candidate in run_list? {f_lc_candidate in current_run_list}")
-                # --- End debug prints ---
+        for f_lc_candidate in sorted(lc_files_candidates):
+            print(f"DEBUG: Current run_list: {current_run_list}")
+            print(f"DEBUG: Candidate file: {f_lc_candidate}")
+            print(f"DEBUG: Is candidate in run_list? {f_lc_candidate in current_run_list}")
 
-                if (f_lc_candidate not in current_run_list): # Check only if it's not in run_list
-                    print(f"Processing new event: {f_lc_candidate}")
-                    # Add to run_list immediately before processing
-                    new_run_list = np.hstack([current_run_list, f_lc_candidate])
-                    np.savetxt(run_list_file_path, new_run_list, fmt="%s")
+            if f_lc_candidate in current_run_list:
+                print(f"Skipping already processed event: {f_lc_candidate}")
+                continue
 
-                    lc_file_name = f_lc_candidate.split(".")[0]
-                    event_identifiers = lc_file_name.split("_")
-                    event_id = event_identifiers[-1]
-                    sub_run = event_identifiers[-3]
-                    field = event_identifiers[-2]
+            print(f"Processing new event: {f_lc_candidate}")
+            event_name, truths, data = self._load_event_from_lcfile(normalized_path, master_file, f_lc_candidate)
+            current_run_list = self._append_to_run_list(run_list_file_path, current_run_list, f_lc_candidate)
+            found_event_to_process = True
+            break
 
-                    data_file = path + f_lc_candidate
-
-                    data = self.load_data(
-                        data_file
-                    )  # bjd, flux, flux_err, tshift, ushift
-
-                    event_name = f"{field}_{sub_run}_{event_id}"
-
-                    obs0_data = data[0].copy()
-                    simt = obs0_data[7]
-                    bjd = obs0_data[0]
-
-                    truths = self.get_params(
-                        master_file, event_id, sub_run, field, simt, bjd
-                    )
-                    
-                    # --- Handle lcname mismatch: LOG and PROCEED ---
-                    if (f_lc_candidate != truths["lcname"]):
-                        print(f"WARNING: Light curve file name mismatch for event {event_name}:")
-                        print(f"  File: {f_lc_candidate}")
-                        print(f"  Truths 'lcname': {truths['lcname']}")
-                        if len(f_lc_candidate) != len(truths["lcname"]):
-                            print(f"  Length mismatch: {len(f_lc_candidate)} != {len(truths['lcname'])}")
-                        print("  Proceeding with processing despite mismatch.")
-                    else:
-                        print("Data file and true params 'lcname' match.")
-                    
-                    # If we reached here, it means we found a suitable f_lc_candidate
-                    # and successfully loaded its data and truths (even with mismatch).
-                    found_event_to_process = True
-                    break # Exit the for loop, we found our event.
-                # If f_lc_candidate is already in run_list, continue to next file
-                else:
-                    print(f"Skipping already processed event: {f_lc_candidate}")
-                    continue # Explicitly continue to next iteration if already run
-
-        # After the loop, if no new event was found to process, return None, None, None
         if not found_event_to_process:
-            print(f"All light curve files in '{path}' have already been processed or no new ones found.")
-            return None, None, None # Graceful exit
+            print(
+                f"All light curve files in '{normalized_path}' have already been processed or no new ones found."
+            )
+            return None, None, None
 
-        # If a new event was found, return its details
+        return event_name, truths, data
+
+
+    def load_event_by_identifier(self, path, identifier):
+        normalized_path, files, master_file, run_list_file_path = self._initialize_directory(path)
+
+        lc_files_candidates = [f for f in files if "det.lc" in f]
+        if not lc_files_candidates:
+            raise FileNotFoundError(
+                f"No light curve files (.det.lc) found in the directory: '{normalized_path}'. Cannot proceed."
+            )
+
+        target_file = self._resolve_lc_candidate(identifier, lc_files_candidates)
+        print(f"Processing specified event from list: {target_file}")
+
+        event_name, truths, data = self._load_event_from_lcfile(normalized_path, master_file, target_file)
+
+        current_run_list = self._read_run_list(run_list_file_path)
+        self._append_to_run_list(run_list_file_path, current_run_list, target_file)
+
         return event_name, truths, data
 
     def load_data(self, data_file):

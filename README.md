@@ -47,6 +47,9 @@ posterior sampling on microlensing events. Basic usage:
 # Run sampling on 1 event using emcee with 4 threads
 python gulls_post.py 1 /path/to/data -s emcee -t 4
 
+# Run a specific list of events supplied in a text file (one identifier per line)
+python gulls_post.py /path/to/data --events-file events_to_run.txt
+
 # Run with Fisher-informed priors
 python gulls_post.py 1 /path/to/data -s emcee -fp
 
@@ -62,6 +65,7 @@ python gulls_post.py 1 /path/to/data -f n   # no plots
 ```
 
 **Key Options:**
+- `--events-file`: Process an explicit list of `.det.lc` names or substrings; skip the positional `NEVENTS` when using this.
 - `-s, --sampler`: Choose `emcee` or `dynesty` (default: emcee)
 - `-t, --threads`: Number of threads for emcee (default: 1)
 - `-fp`: Use Fisher uncertainties to inform prior ranges
@@ -72,6 +76,8 @@ python gulls_post.py 1 /path/to/data -f n   # no plots
 - `-f`: Plot control flags
 
 Plots and posterior samples are saved in the `posteriors/` subdirectory.
+
+When using `--events-file`, list one event per line. Lines beginning with `#` are ignored, and both full filenames (e.g. `5f_overguide_m40_1_721_311.det.lc`) or unique suffixes (e.g. `721_311`) may be supplied.
 
 ## Learning more
 
@@ -85,4 +91,3 @@ Plots and posterior samples are saved in the `posteriors/` subdirectory.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
