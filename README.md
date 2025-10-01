@@ -79,6 +79,22 @@ Plots and posterior samples are saved in the `posteriors/` subdirectory.
 
 When using `--events-file`, list one event per line. Lines beginning with `#` are ignored, and both full filenames (e.g. `5f_overguide_m40_1_721_311.det.lc`) or unique suffixes (e.g. `721_311`) may be supplied.
 
+## VBMicrolensing metadata and failure logging
+
+Each data directory keeps a `.gulls_config.json` file that now records the VBMicrolensing
+settings used during sampling (library version when available, relative tolerance, and
+timeout). Whenever VBMicrolensing encounters numerical trouble, the parameter vectors
+responsible for the issue are stored in-memory and written alongside the posterior
+outputs:
+
+- `posteriors/<event>_vbm_faults.npy` — rows of `(s, q, u0, alpha, rho)` that triggered
+  a VBMicrolensing exception.
+- `posteriors/<event>_vbm_timeouts.npy` — parameter sets that exceeded the timeout.
+
+The files are replaced on every run (and removed when no failures occur), giving the VBM
+developers compact snapshots of problematic regions in parameter space without letting
+the history grow unbounded.
+
 ## Learning more
 
 - Examine `Data.new_event` and `Data.load_data` to understand the light‑curve
