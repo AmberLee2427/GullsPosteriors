@@ -253,27 +253,89 @@ class Data:
         return event_name, truths, data
 
 
+    def _infer_prefix_from_lc_files(self, lc_files):
+        if not lc_files:
+            raise ValueError("Cannot infer prefix without light curve files.")
+
+        sample_name = sorted(lc_files)[0]
+        base_name = sample_name[:-len('.det.lc')] if sample_name.endswith('.det.lc') else sample_name
+        parts = base_name.split('_')
+        if len(parts) < 4:
+            raise ValueError(f"Unrecognized light curve naming convention: {sample_name}")
+        prefix = '_'.join(parts[:-3])
+        if not prefix:
+            raise ValueError(f"Could not determine prefix from light curve name: {sample_name}")
+
+        if self._config is not None and not self._config.get('prefix'):
+            self._config['prefix'] = prefix
+            self._save_config()
+
+        return prefix
+
+
     def _resolve_lc_candidate(self, identifier, lc_files):
-        if identifier.endswith('.det.lc'):
-            if identifier in lc_files:
-                return identifier
-            raise FileNotFoundError(f"Requested light curve '{identifier}' not found in directory.")
+        lc_files_set = set(lc_files)
 
-        matches = [f for f in lc_files if identifier in f]
-        if not matches:
-            raise FileNotFoundError(f"No light curve found matching identifier '{identifier}'.")
+        def _parse_parts(name):
+            base = name[:-len('.det.lc')] if name.endswith('.det.lc') else name.split('.')[0]
+            parts = base.split('_')
+            if len(parts) < 4:
+                raise ValueError(f"Unrecognized light curve naming convention: {name}")
+            prefix = '_'.join(parts[:-3])
+            return prefix, int(parts[-3]), int(parts[-2]), int(parts[-1])
 
-        if len(matches) == 1:
-            return matches[0]
+        if isinstance(identifier, (tuple, list)) and len(identifier) >= 3:
+            event_id, sub_run, field = [int(x) for x in identifier[:3]]
+            prefix = self._config.get('prefix') if self._config else None
+            if not prefix:
+                prefix = self._infer_prefix_from_lc_files(lc_files)
+            candidate = f"{prefix}_{sub_run}_{field}_{event_id}.det.lc"
+            if candidate in lc_files_set:
+                return candidate
 
-        suffix_matches = [f for f in matches if f.split('.')[0].endswith(identifier)]
-        if len(suffix_matches) == 1:
-            return suffix_matches[0]
+            for fname in lc_files:
+                try:
+                    _, sub, fld, eid = _parse_parts(fname)
+                except ValueError:
+                    continue
+                if (sub, fld, eid) == (sub_run, field, event_id):
+                    return fname
 
-        raise ValueError(
-            f"Identifier '{identifier}' matched multiple light curves: {matches}. "
-            "Provide a more specific name (e.g., full .det.lc filename)."
-        )
+            raise FileNotFoundError(
+                f"No light curve file found for identifiers {identifier}."
+            )
+
+        if isinstance(identifier, (int, float)):
+            identifier = str(int(identifier))
+
+        if isinstance(identifier, str):
+            if identifier.endswith('.det.lc'):
+                if identifier in lc_files_set:
+                    return identifier
+                raise FileNotFoundError(
+                    f"Requested light curve '{identifier}' not found in directory."
+                )
+
+            matches = [f for f in lc_files if identifier in f]
+            if not matches:
+                raise FileNotFoundError(
+                    f"No light curve found matching identifier '{identifier}'."
+                )
+
+            if len(matches) == 1:
+                return matches[0]
+
+            suffix_matches = [f for f in matches if f.split('.')[0].endswith(identifier)]
+            if len(suffix_matches) == 1:
+                return suffix_matches[0]
+
+            raise ValueError(
+                f"Identifier '{identifier}' matched multiple light curves: {matches}. "
+                "Provide a more specific name (e.g., full .det.lc filename)."
+            )
+
+        raise ValueError(f"Unsupported identifier type for light curve selection: {type(identifier)}")
+
 
 
     def new_event(self, path, sort="alphanumeric"):
@@ -853,9 +915,14 @@ class Data:
         ].iloc[0]
 
         # Try to read gamma from master file if we have the default value
-        if self.gamma == 0.36 and 'LDgamma' in truths:
+        if 'LDgamma' in truths:
             try:
-                self.gamma = float(truths['LDgamma'])
+                gamma_val = float(truths['LDgamma'])
+                self.gamma = gamma_val
+                try:
+                    truths.at['gamma'] = gamma_val
+                except Exception:
+                    pass
                 print(f"Loaded limb darkening gamma from master file: {self.gamma}")
             except (ValueError, TypeError):
                 print(f"Warning: Could not parse LDgamma from master file: {truths['LDgamma']}")

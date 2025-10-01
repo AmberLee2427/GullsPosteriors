@@ -650,7 +650,7 @@ class Event:
 
         # Calculate magnification - let errors propagate up for fast failure
         A = self.magnification(
-            ss, q, xsrot, ysrot, rho, eps=self.eps, gamma=self.gamma
+            ss, q, xsrot, ysrot, rho, eps=self.eps
         )
         
         # Validate magnification results - should be real numbers

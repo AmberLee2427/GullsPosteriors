@@ -75,7 +75,21 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
     if self.mag_obj is None:
         self.mag_obj = VBMicrolensing.VBMicrolensing()
 
+    if self.gamma is None:
+        raise ValueError('Limb darkening gamma must be set before calling magnification.')
+
+    # Force linear limb darkening profile when available
+    if hasattr(self.mag_obj, 'SetLDprofile') and hasattr(self.mag_obj, 'LDprofiles'):
+        try:
+            self.mag_obj.SetLDprofile(self.mag_obj.LDprofiles.LDlinear)
+        except AttributeError:
+            pass
+
     self.mag_obj.a1 = self.gamma
+    try:
+        self.mag_obj.a2 = 0.0
+    except AttributeError:
+        pass
     self.mag_obj.RelTol = eps
 
     mag = np.zeros_like(ss)

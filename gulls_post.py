@@ -15,7 +15,11 @@ import warnings
 import argparse
 import numpy as np
 import pickle
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+    warnings.warn('matplotlib not available; plotting disabled for this session')
 import yaml
 
 from Data import Data
@@ -124,8 +128,28 @@ def load_event_list(file_path):
     if not os.path.isfile(resolved_path):
         sys.exit(f"Event list file '{file_path}' does not exist.")
 
+    events = []
     with open(resolved_path, 'r') as handle:
-        events = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith('#')]
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.lstrip().startswith('#'):
+                continue
+
+            tokens = stripped.split()
+            normalized_entry = None
+            if len(tokens) >= 3:
+                try:
+                    event_id = int(float(tokens[0]))
+                    sub_run = int(float(tokens[1]))
+                    field = int(float(tokens[2]))
+                    normalized_entry = (event_id, sub_run, field)
+                except ValueError:
+                    normalized_entry = None
+
+            if normalized_entry is not None:
+                events.append(normalized_entry)
+            else:
+                events.append(stripped)
 
     if not events:
         sys.exit(f"Event list file '{file_path}' did not contain any usable entries.")
@@ -276,6 +300,7 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
             'Field': truths.get('Field'),
             'SubRun': truths.get('SubRun'),
             'lcname': truths.get('lcname'),
+            'gamma': truths.get('gamma', data_obj.gamma),
             'params': truths['params'].tolist() if hasattr(truths.get('params'), 'tolist') else truths.get('params'),
         }
     }
@@ -355,10 +380,9 @@ def run(args):
             target_identifier = event_identifiers[i]
             try:
                 event_name, truths_series, data = data_obj.load_event_by_identifier(path, target_identifier)
-            except FileNotFoundError as exc:
-                sys.exit(str(exc))
-            except ValueError as exc:
-                sys.exit(str(exc))
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Skipping event {target_identifier}: {exc}")
+                continue
         else:
             event_name, truths_series, data = data_obj.new_event(path, args.sort)
             if event_name is None:
