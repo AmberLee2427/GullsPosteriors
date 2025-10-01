@@ -32,6 +32,10 @@ class Data:
         self._data_path = None
         self._config_file = None
         self._config = None
+        self.vbm_metadata = {'version': 'unknown', 'rel_tol': 1e-4, 'timeout': 300, 'failures': {}}
+        self.vbm_rel_tol = 1e-4
+        self.vbm_timeout = 300
+        self.config_file = None
         # Initialize _config before calling _load_prm_time_correction without data_dir
         # Use a temporary path if _data_path is not yet set
         temp_data_dir = os.getcwd() if self._data_path is None else self._data_path
@@ -129,6 +133,47 @@ class Data:
         print("No SIMULATION_ZERO_TIME loaded from .prm file.")
 
 
+
+    def _ensure_vbm_metadata(self):
+        """Ensure VBMicrolensing metadata is tracked in the local config."""
+        updated = False
+        if self._config is None:
+            self._config = {}
+        vbm_meta = self._config.get('vbm_metadata')
+        if not isinstance(vbm_meta, dict):
+            vbm_meta = {}
+            self._config['vbm_metadata'] = vbm_meta
+            updated = True
+
+        if 'version' not in vbm_meta:
+            try:
+                import VBMicrolensing  # pylint: disable=import-error
+                version = getattr(VBMicrolensing, '__version__', getattr(VBMicrolensing, 'VERSION', 'unknown'))
+            except ImportError:
+                version = 'unavailable'
+            vbm_meta['version'] = version
+            updated = True
+
+        if 'rel_tol' not in vbm_meta:
+            vbm_meta['rel_tol'] = 1e-4
+            updated = True
+
+        if 'timeout' not in vbm_meta:
+            vbm_meta['timeout'] = 300
+            updated = True
+
+        if 'failures' not in vbm_meta:
+            vbm_meta['failures'] = {}
+            updated = True
+
+        if updated:
+            self._save_config()
+
+        self.vbm_metadata = vbm_meta
+        self.vbm_rel_tol = vbm_meta.get('rel_tol', 1e-4)
+        self.vbm_timeout = vbm_meta.get('timeout', 300)
+        self.config_file = self._config_file
+
     def _initialize_directory(self, path):
         if not os.path.isdir(path):
             raise FileNotFoundError(f"Data directory '{path}' does not exist or is not a directory.")
@@ -137,6 +182,7 @@ class Data:
         self.model_derivatives = None
         self._data_path = path
         self._load_config(path)
+        self._ensure_vbm_metadata()
 
         normalized_path = path if path.endswith(os.sep) else path + os.sep
         run_list_file_path = self._ensure_run_tracking_files(normalized_path)

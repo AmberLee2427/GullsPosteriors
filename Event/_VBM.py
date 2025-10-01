@@ -111,10 +111,24 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
         return np.array(mag)
         
     except TimeoutError:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+        params_vec = getattr(self, '_last_vbm_params', None)
+        if params_vec is not None and hasattr(self, 'vbm_timeout_params'):
+            try:
+                self.vbm_timeout_params.append(np.asarray(params_vec, dtype=float))
+            except Exception:
+                pass
         raise RuntimeError(f"VBMicrolensing calculation timed out after {timeout} seconds. This suggests the parameters may be problematic or the system is overloaded.")
     except Exception as e:
         # Clear alarm on any other exception and fail hard
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
+        params_vec = getattr(self, '_last_vbm_params', None)
+        if params_vec is not None and hasattr(self, 'vbm_fault_params'):
+            try:
+                self.vbm_fault_params.append(np.asarray(params_vec, dtype=float))
+            except Exception:
+                pass
         raise RuntimeError(f"VBMicrolensing calculation failed: {e}. This indicates a serious problem with the magnification calculation.")  
 

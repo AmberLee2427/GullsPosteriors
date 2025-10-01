@@ -427,11 +427,11 @@ def run(args):
                                 truths["tcroin"], tu_data, piE, epochs)
         parallax_obj.update_piE_NE(truths["piEN"], truths["piEE"])
 
-        event_t0 = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["t0lens1"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
-        event_tc = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["tcroin"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
+        event_t0 = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["t0lens1"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
+        event_tc = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, truths["tcroin"], gamma=data_obj.gamma, LOM_enabled=LOM_enabled, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
         s, q, u0, alpha = truths["params"][0], truths["params"][1], truths["params"][3], truths["params"][4]
         tc_calc = event_tc.croin(t0, u0, s, q, alpha, tE)
-        event_tref = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, tc_calc, gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
+        event_tref = Event(parallax_obj, orbit_obj, data, truths, data_obj.sim_time0, tc_calc, gamma=data_obj.gamma, LOM_enabled=LOM_enabled, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
 
         # Choose tref by chi^2
         chi2_ew_t0, _ = fit_obj.get_chi2(event_t0, truths["params"]) 
@@ -569,7 +569,7 @@ def run(args):
             pts = np.where((current_t > tmin_fit) & (current_t < tmax_fit))
             data_cropped[obs_key] = data[obs_key].T[pts].T
 
-        event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=LOM_enabled)
+        event_fit = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=LOM_enabled, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
 
         # Save sampling parameters to .prm file before starting
         # add normal and unit_cube to the fit object init
@@ -645,6 +645,20 @@ def run(args):
             samples_phys = flat_chain
 
         np.save(path + f"posteriors/{event_name}_post_samples.npy", samples_phys)
+
+        def _save_vbm_array(label, data_list):
+            outfile = path + f"posteriors/{event_name}_{label}.npy"
+            if data_list:
+                arr = np.asarray(data_list, dtype=float)
+                np.save(outfile, arr)
+            elif os.path.exists(outfile):
+                os.remove(outfile)
+
+        if hasattr(event_fit, 'vbm_fault_params'):
+            _save_vbm_array('vbm_faults', event_fit.vbm_fault_params)
+        if hasattr(event_fit, 'vbm_timeout_params'):
+            _save_vbm_array('vbm_timeouts', event_fit.vbm_timeout_params)
+
         with open(path + f"posteriors/{event_name}end_truths.pkl", "wb") as f:
             pickle.dump(truths, f)
 
@@ -749,9 +763,9 @@ def run(args):
                     # F = fs*A + (1-fs), so A = (F - (1-fs)) / fs = (F - fb) / fs
                     temp_params = median_params.copy()
                     if LOM_enabled and len(temp_params) >= 12:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                     else:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                     
                     temp_event.set_params(temp_params)
                     A_model = temp_event.get_magnification(t_obs, obs)
@@ -786,9 +800,9 @@ def run(args):
                 
                 # Median model
                 if LOM_enabled and len(median_params) >= 12:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                 else:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                 temp_event.set_params(median_params)
                 A_fine_median = temp_event.get_magnification(t_fine, 0)
                 ax1.plot(t_fine, A_fine_median, '-', color='black', linewidth=2, label='Median posterior', zorder=3)
@@ -796,9 +810,9 @@ def run(args):
                 # Random posterior samples (transparent)
                 for j, sample_params in enumerate(random_samples):
                     if LOM_enabled and len(sample_params) >= 12:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                     else:
-                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
+                        temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                     temp_event.set_params(sample_params)
                     A_fine_sample = temp_event.get_magnification(t_fine, 0)
                     label_str = 'Posterior samples' if j == 0 else None
@@ -807,9 +821,9 @@ def run(args):
                 
                 # Truth model for comparison
                 if LOM_enabled and len(truths["params"]) >= 12:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=True, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                 else:
-                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False)
+                    temp_event = Event(parallax_obj, orbit_obj, data_cropped, truths, data_obj.sim_time0, fit_tref, gamma=data_obj.gamma, LOM_enabled=False, eps=data_obj.vbm_rel_tol, vbm_timeout=data_obj.vbm_timeout)
                 temp_event.set_params(truths["params"][:ndim])
                 A_fine_truth = temp_event.get_magnification(t_fine, 0)
                 ax1.plot(t_fine, A_fine_truth, '--', color='green', linewidth=2, label='Truth', zorder=3)

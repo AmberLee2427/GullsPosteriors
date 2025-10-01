@@ -24,6 +24,7 @@ class Event:
         eps=1e-4,
         gamma=None,  # Will be read from data_obj.gamma (loaded from .prm file)
         LOM_enabled=True,
+        vbm_timeout=None,
     ):
         """Instantiate a microlensing event model.
 
@@ -48,6 +49,8 @@ class Event:
             Linear limb darkening coefficient (required, read from .prm file).
         LOM_enabled : bool, optional
             If ``True`` include lens orbital motion parameters in the model.
+        vbm_timeout : float, optional
+            Maximum number of seconds to allow VBMicrolensing to run per call.
 
         Attributes
         ----------
@@ -101,13 +104,17 @@ class Event:
         )  # don't want to edit true params when we edit params
         # print('debug Event.__init__: sim_time0: ', self.sim_time0)
         # print('debug Event.__init__: t_ref: ', self.t_ref)
-        self.eps = eps
+        self.eps = 1e-4 if eps is None else eps
         if gamma is None:
             raise ValueError("gamma parameter is required and must be provided from data_obj.gamma")
         self.gamma = gamma
+        self.vbm_timeout = 300 if vbm_timeout is None else vbm_timeout
         self.mag_obj = None
 
         self.LOM_enabled = LOM_enabled  # NEW: store the flag
+        self.vbm_fault_params = []
+        self.vbm_timeout_params = []
+        self._last_vbm_params = None
         self.traj_base_tau = {}
         self.traj_parallax_tau = {}
         self.traj_base_beta = {}
@@ -614,6 +621,7 @@ class Event:
         self.traj_parallax_dalpha_u2[obs] = ysrot
 
         rho = p[2]  # source radius in units of thetaE
+        self._last_vbm_params = np.array([s, q, u0, alpha, rho], dtype=float)
 
         # print('\ndebug Event.get_magnification: q: \n',
         #      q, q.shape
@@ -650,7 +658,7 @@ class Event:
 
         # Calculate magnification - let errors propagate up for fast failure
         A = self.magnification(
-            ss, q, xsrot, ysrot, rho, eps=self.eps
+            ss, q, xsrot, ysrot, rho, eps=self.eps, timeout=self.vbm_timeout
         )
         
         # Validate magnification results - should be real numbers
