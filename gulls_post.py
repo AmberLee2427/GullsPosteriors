@@ -219,7 +219,7 @@ def choose_prior_type(args):
 
 
 def save_run_parameters(args, event_name, path, truths, ndim, labels, 
-                        prange_linear, prange_log, prior_type, start_time, fit_obj):
+                        prange_linear, prange_log, prior_type, start_time, fit_obj, gamma):
     """Save sampling run parameters to a .prm file in YAML format.
     
     Parameters
@@ -244,6 +244,8 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
         Type of prior used
     fit_obj : Fit object
         Fit object containing sigma parameters for priors and prior type.
+    gamma : float
+        Gamma parameter from data object
     """ 
     # Build parameter dictionary
     run_params = {
@@ -300,7 +302,7 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
             'Field': truths.get('Field'),
             'SubRun': truths.get('SubRun'),
             'lcname': truths.get('lcname'),
-            'gamma': truths.get('gamma', data_obj.gamma),
+            'gamma': truths.get('gamma', gamma),
             'params': truths['params'].tolist() if hasattr(truths.get('params'), 'tolist') else truths.get('params'),
         }
     }
@@ -415,12 +417,14 @@ def run(args):
         piE = np.array([truths["piEN"], truths["piEE"]])
         t0 = truths["params"][5]
         tE = truths["params"][6]
-        tu_data, epochs, t_data, f_true, f_err_true = {}, {}, {}, {}, {}
+        tu_data, epochs, t_data, f_true, f_err_true, f_measured, f_err_measured = {}, {}, {}, {}, {}, {}, {}
         for obs in data.keys():
             tu_data[obs] = data[obs][3:5, :].T
             epochs[obs] = data[obs][0, :]
-            f_true[obs] = data[obs][5, :]
-            f_err_true[obs] = data[obs][6, :]
+            f_measured[obs] = data[obs][1, :]  # measured_relative_flux
+            f_err_measured[obs] = data[obs][2, :]  # measured_relative_flux_error
+            f_true[obs] = data[obs][5, :]  # true_relative_flux
+            f_err_true[obs] = data[obs][6, :]  # true_relative_flux_error
             t_data[obs] = data[obs][0, :]
 
         parallax_obj = Parallax(truths["ra_deg"], truths["dec_deg"], orbit_obj,
@@ -469,11 +473,20 @@ def run(args):
 
                 for obs in ordered_obs:
                     A = event_t0.get_magnification(t_data[obs], obs)
-                    fs_obs, fb_obs = fit_obj.get_fluxes(A, f_true[obs], f_err_true[obs] ** 2)
-                    ax1.plot(t_data[obs], (f_true[obs] - fb_obs) / fs_obs, '.', color=colour_map[obs],
-                             label=label_map[obs], alpha=0.5, zorder=0)
-                    residuals = f_true[obs] - (A * fs_obs + fb_obs)
-                    ax2.plot(t_data[obs], residuals, '.', color=colour_map[obs], alpha=0.5, zorder=0)
+                    
+                    # Plot true flux (what you were using before) - solid color
+                    fs_obs_true, fb_obs_true = fit_obj.get_fluxes(A, f_true[obs], f_err_true[obs] ** 2)
+                    ax1.plot(t_data[obs], (f_true[obs] - fb_obs_true) / fs_obs_true, '.', 
+                             color=colour_map[obs], label=f'{label_map[obs]} (true)', alpha=0.8, zorder=1)
+                    residuals_true = f_true[obs] - (A * fs_obs_true + fb_obs_true)
+                    ax2.plot(t_data[obs], residuals_true, '.', color=colour_map[obs], alpha=0.8, zorder=1)
+                    
+                    # Plot measured flux - same color but lower alpha
+                    fs_obs_meas, fb_obs_meas = fit_obj.get_fluxes(A, f_measured[obs], f_err_measured[obs] ** 2)
+                    ax1.plot(t_data[obs], (f_measured[obs] - fb_obs_meas) / fs_obs_meas, '.', 
+                             color=colour_map[obs], label=f'{label_map[obs]} (measured)', alpha=0.4, zorder=0)
+                    residuals_meas = f_measured[obs] - (A * fs_obs_meas + fb_obs_meas)
+                    ax2.plot(t_data[obs], residuals_meas, '.', color=colour_map[obs], alpha=0.4, zorder=0)
 
                 # Models at t0, tc, and calculated tref
                 ax1.plot(tt, event_tc.get_magnification(tt, 0), '-', color='cyan', label=f"$t_c$={event_tc.t_ref:.1f}", lw=1, alpha=0.75)
@@ -486,7 +499,7 @@ def run(args):
                 title_str = build_plot_titles(LOM_enabled)
                 ax1.set_title(title_str % tuple(truths['params'][:ndim]))
                 ax1.legend()
-                ax2.set_ylabel('Residuals (true flux - model)')
+                ax2.set_ylabel('Residuals (flux - model)')
                 ax2.set_xlabel('BJD')
                 fig.tight_layout()
                 plt.savefig(path + f"posteriors/{event_name}_truths_lightcurve.png", dpi=200)
@@ -575,7 +588,7 @@ def run(args):
         # add normal and unit_cube to the fit object init
 
         save_run_parameters(args, event_name, path, truths, ndim, labels, 
-                           prange_linear, prange_log, prior_type, start_time, fit_obj)
+                           prange_linear, prange_log, prior_type, start_time, fit_obj, data_obj.gamma)
 
         # Sampler setup
         print(f"\nSampling Posterior using {args.sampler}")

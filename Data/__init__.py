@@ -468,9 +468,14 @@ class Data:
         target_file = self._resolve_lc_candidate(identifier, lc_files_candidates)
         print(f"Processing specified event from list: {target_file}")
 
+        # Check if this event has already been processed
+        current_run_list = self._read_run_list(run_list_file_path)
+        if target_file in current_run_list:
+            print(f"Skipping already processed event: {target_file}")
+            raise ValueError(f"Event {target_file} has already been processed. Check emcee_run_list.txt")
+
         event_name, truths, data = self._load_event_from_lcfile(normalized_path, master_file, target_file)
 
-        current_run_list = self._read_run_list(run_list_file_path)
         self._append_to_run_list(run_list_file_path, current_run_list, target_file)
 
         return event_name, truths, data
