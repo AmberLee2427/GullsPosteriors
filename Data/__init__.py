@@ -36,6 +36,7 @@ class Data:
         self.vbm_rel_tol = 1e-4
         self.vbm_timeout = 300
         self.config_file = None
+        self.obs_list = None  # Optional list of observatory codes to include
         # Initialize _config before calling _load_prm_time_correction without data_dir
         # Use a temporary path if _data_path is not yet set
         temp_data_dir = os.getcwd() if self._data_path is None else self._data_path
@@ -183,6 +184,13 @@ class Data:
         self._data_path = path
         self._load_config(path)
         self._ensure_vbm_metadata()
+        # Restore obs_list from config if present
+        if isinstance(self._config, dict) and 'obs_list' in self._config and self._config['obs_list'] is not None:
+            try:
+                self.obs_list = [int(x) for x in self._config['obs_list']]
+                print(f"Restored obs_list from config: {self.obs_list}")
+            except Exception:
+                self.obs_list = None
 
         normalized_path = path if path.endswith(os.sep) else path + os.sep
         run_list_file_path = self._ensure_run_tracking_files(normalized_path)
@@ -691,6 +699,17 @@ class Data:
             print(f"Warning: Non-essential columns missing in {data_file}: {missing_columns}")
             data = data[available_columns] # Proceed with available columns
 
+        # Apply observatory filtering if requested
+        if self.obs_list is not None:
+            if 'observatory_code' not in data.columns:
+                raise ValueError("Observatory filtering requested but 'observatory_code' column is missing.")
+            before = len(data)
+            data = data[data['observatory_code'].astype(int).isin(set(self.obs_list))]
+            after = len(data)
+            if after == 0:
+                raise ValueError(f"After applying obs_list={self.obs_list}, no data points remain in {data_file}.")
+            print(f"Filtered data by obs_list={self.obs_list}: {before} -> {after} rows")
+
         # Fisher derivatives are in columns 21-29 (0-indexed: 20-28) for 40-column format
         # Try to find dTheta columns first, then fall back to positional extraction
         col_names = [col for col in data.columns if col.startswith("dTheta")]
@@ -728,6 +747,17 @@ class Data:
                 full_derivatives = np.hstack([model_derivs_reordered, flux_derivs])
                 n_flux_params = flux_derivs.shape[1]
                 print(f"Including {n_flux_params} flux derivative columns in Fisher calculation")
+                # Validate flux-parameter count: should equal 2 * number of observatories
+                try:
+                    n_observatories = int(data["observatory_code"].nunique())
+                except Exception:
+                    n_observatories = None
+                if n_observatories is not None:
+                    expected_flux_params = 2 * n_observatories
+                    if n_flux_params != expected_flux_params:
+                        raise ValueError(
+                            f"Fisher derivatives mismatch: found {n_flux_params} flux columns but expected {expected_flux_params} (= 2 * {n_observatories} observatories)."
+                        )
             else:
                 full_derivatives = model_derivs_reordered
                 n_flux_params = 0
@@ -736,6 +766,13 @@ class Data:
             n_model_params = 9
             n_total_params = full_derivatives.shape[1]
             print(f"Fisher matrix: {n_model_params} model + {n_flux_params} flux = {n_total_params} total params")
+            # Additional validation when flux derivatives are present
+            if n_flux_params > 0:
+                expected_total_params = n_model_params + (2 * n_observatories if n_observatories is not None else n_flux_params)
+                if n_observatories is not None and n_total_params != expected_total_params:
+                    raise ValueError(
+                        f"Fisher total-parameter mismatch: found {n_total_params} but expected {expected_total_params} (= {n_model_params} + 2 * {n_observatories})."
+                    )
 
             # Data weights
             flux_errors = data["measured_relative_flux_error"].values
@@ -868,6 +905,63 @@ class Data:
             data_dict[code] = data_obs.to_numpy().T
 
         return data_dict
+
+    def set_obs_group(self, group_index):
+        """Select an observatory group defined in the .prm file via OBS_GROUPS.
+
+        Parameters
+        ----------
+        group_index : int
+            0-indexed index into OBS_GROUPS tuples defined in the active .prm file.
+
+        Raises
+        ------
+        RuntimeError if no prm file is configured when a group is requested.
+        ValueError for malformed OBS_GROUPS or missing entries.
+        IndexError if group_index is out of range.
+        """
+        # Ensure we have a config and prm file
+        if not self._config or not self._config.get('prm_file'):
+            raise RuntimeError("--obs-group was supplied but no parameter (.prm) file is configured. Cannot select observatory group.")
+
+        prm_path = self._config['prm_file']
+        if not os.path.exists(prm_path):
+            raise FileNotFoundError(f"Configured prm file does not exist: {prm_path}")
+
+        # Parse OBS_GROUPS line(s)
+        groups_line = None
+        with open(prm_path, 'r') as f:
+            for line in f:
+                if line.strip().startswith('OBS_GROUPS='):
+                    groups_line = line.strip()
+                    break
+        if groups_line is None:
+            raise ValueError(f"OBS_GROUPS not found in prm file: {prm_path}")
+
+        # Extract tuples like (0,1,3)
+        import re
+        tuples = re.findall(r"\(([^)]*)\)", groups_line)
+        if not tuples:
+            raise ValueError(f"OBS_GROUPS appears malformed in {prm_path}: '{groups_line}'")
+        groups = []
+        for t in tuples:
+            try:
+                entries = [int(x.strip()) for x in t.split(',') if x.strip() != '']
+                if not entries:
+                    raise ValueError
+                groups.append(entries)
+            except Exception:
+                raise ValueError(f"Invalid OBS_GROUPS tuple in {prm_path}: '({t})'")
+
+        if group_index < 0 or group_index >= len(groups):
+            raise IndexError(f"Requested obs group index {group_index} is out of range (0..{len(groups)-1}).")
+
+        self.obs_list = groups[group_index]
+        # Persist obs_list to config
+        if isinstance(self._config, dict):
+            self._config['obs_list'] = list(self.obs_list)
+            self._save_config()
+        print(f"Selected observatory group {group_index}: {self.obs_list}")
 
     def _read_master_file(self, master_file):
         """Read master file, supporting both CSV and HDF5 formats."""

@@ -80,6 +80,8 @@ Prior types:
     event_group = p.add_argument_group("Event Selection")
     event_group.add_argument("--events-file", dest="events_file", default=None,
                              help="Path to a text file listing events to process (one per line)")
+    event_group.add_argument("--obs-group", dest="obs_group", type=int, default=None,
+                             help="Index into OBS_GROUPS from .prm to select observatory subset (0-indexed)")
 
     # Sampling configuration
     sampling_group = p.add_argument_group("Sampling Configuration")
@@ -295,6 +297,7 @@ def save_run_parameters(args, event_name, path, truths, ndim, labels,
         'plotting_config': {
             'plot_flags': args.plots,
             'sort_method': args.sort,
+            'obs_group': args.obs_group,
         },
         'event_truths': {
             # Save key truth parameters (avoid massive arrays)
@@ -373,10 +376,43 @@ def run(args):
     if not os.path.exists(path + "posteriors/"):
         os.mkdir(path + "posteriors/")
 
+    # Apply observatory group selection if requested
+    if args.obs_group is not None:
+        try:
+            data_obj = Data()
+            # Load config for the provided data path
+            data_obj._load_config(path)
+            # Ensure prm_file is set without interactive prompts
+            prm_path = None
+            if data_obj._config.get('prm_file') and os.path.exists(data_obj._config['prm_file']):
+                prm_path = data_obj._config['prm_file']
+            else:
+                # Search for a .prm file in the data path
+                candidates = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.prm')]
+                if len(candidates) == 1:
+                    prm_path = candidates[0]
+                    data_obj._config['prm_file'] = prm_path
+                    data_obj._save_config()
+                elif len(candidates) == 0:
+                    raise RuntimeError("--obs-group requires a parameter (.prm) file in the data directory, but none was found.")
+                else:
+                    raise RuntimeError(f"--obs-group requires a parameter (.prm) file, but multiple were found: {candidates}. Please set one in .gulls_config.json.")
+
+            # Now set the observatory group
+            data_obj.set_obs_group(args.obs_group)
+            print(f"Using observatory group {args.obs_group}: {data_obj.obs_list}")
+        except Exception as e:
+            sys.exit(f"Failed to set observatory group {args.obs_group}: {e}")
+
     # Process events
     for i in range(total_events):
         fit_obj.current_event = None
-        data_obj = Data()
+        # Create Data object; preserve obs_list set above (if any)
+        if 'data_obj' in locals() and isinstance(data_obj, Data) and getattr(data_obj, 'obs_list', None) is not None:
+            # Reuse the configured Data object so obs_list and config persist
+            pass
+        else:
+            data_obj = Data()
 
         if event_identifiers is not None:
             target_identifier = event_identifiers[i]
@@ -406,12 +442,19 @@ def run(args):
         fit_obj.fisher_uncertainties_for_plotting = None
         fit_obj.fisher_covariance_for_plotting = None
         if args.use_fisher_prior and data_obj.model_parameter_uncertainties is not None:
-            fit_obj.fisher_uncertainties_for_prior = data_obj.model_parameter_uncertainties
-            fit_obj.fisher_uncertainties_for_plotting = data_obj.model_parameter_uncertainties
+            # Build label->sigma dict for robustness (handles extra flux params gracefully)
+            base_model_labels = ["s","q","rho","u0","alpha","t0","tE","piEE","piEN"]
+            sig = np.asarray(data_obj.model_parameter_uncertainties).reshape(-1)
+            fisher_dict = {lbl: float(sig[i]) for i, lbl in enumerate(base_model_labels) if i < len(sig)}
+            fit_obj.fisher_uncertainties_for_prior = fisher_dict
+            fit_obj.fisher_uncertainties_for_plotting = fisher_dict
             fit_obj.fisher_covariance_for_plotting = data_obj.model_covariance
         elif data_obj.model_parameter_uncertainties is not None:
             fit_obj.fisher_covariance_for_plotting = data_obj.model_covariance
-            fit_obj.fisher_uncertainties_for_plotting = data_obj.model_parameter_uncertainties
+            base_model_labels = ["s","q","rho","u0","alpha","t0","tE","piEE","piEN"]
+            sig = np.asarray(data_obj.model_parameter_uncertainties).reshape(-1)
+            fisher_dict = {lbl: float(sig[i]) for i, lbl in enumerate(base_model_labels) if i < len(sig)}
+            fit_obj.fisher_uncertainties_for_plotting = fisher_dict
 
         # Repackage data
         piE = np.array([truths["piEN"], truths["piEE"]])

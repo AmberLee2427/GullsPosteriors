@@ -317,7 +317,7 @@ def run_burnin(
         print(f"Fisher uncertainties: {fisher_uncertainties_for_plotting}")
 
         # Plotting burn-in chain - pass the physical truths and other prior params
-        if self.plot_chain:
+        if self.plot_chains:
             self.plot_chain(sampler, f"{event_name}_burnin", path, labels=labels,
                             truths=truths['params'], # Pass the actual physical truths array
                             fisher_uncertainties_for_plotting=fisher_uncertainties_for_plotting,
@@ -498,35 +498,84 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
     print(f"Chain space detection: {'unit-cube' if is_unit_cube else 'physical'}")
     print(f"Chain value ranges: min={np.min(chain_flat, axis=0)}, max={np.max(chain_flat, axis=0)}")
 
-    # Extract the relevant subset of truths for the current model
-    if truths is not None:
-        if self.LOM_enabled:
-            truths_subset = truths[:12]  # this is brittle and should be fixed
-        else:
-            truths_subset = truths[:9]
-    else:
-        truths_subset = None
+    # Map truths/fisher arrays to the current parameter ordering (self.labels)
+    current_labels = self.labels if hasattr(self, 'labels') and self.labels is not None else [f"theta[{i}]" for i in range(ndim)]
+    full_labels_list = [
+        "s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"
+    ]
 
-    # Extract Fisher uncertainties for plotting (if provided)
-    if fisher_uncertainties_for_plotting is not None:
-        if self.LOM_enabled:
-            fisher_subset = fisher_uncertainties_for_plotting[:12]
+    truths_full = None
+    truths_arr = None
+    if truths is not None:
+        t = np.asarray(truths).reshape(-1)
+        if t.shape[0] == 12:
+            truths_full = t
+            # Map to subset in current order
+            idx_map = [full_labels_list.index(lbl) for lbl in current_labels]
+            truths_arr = truths_full[idx_map]
+        elif t.shape[0] == ndim:
+            truths_arr = t
         else:
-            fisher_subset = fisher_uncertainties_for_plotting[:9]
-    else:
-        fisher_subset = None
+            raise ValueError(
+                f"plot_chain: 'truths' length ({t.shape[0]}) must be either 12 (full set) or match chain ndim ({ndim})."
+            )
+
+    fisher_arr = None
+    if fisher_uncertainties_for_plotting is not None:
+        # Support dict mapping label->sigma
+        if isinstance(fisher_uncertainties_for_plotting, dict):
+            label_sigma = fisher_uncertainties_for_plotting
+            fisher_arr = np.full(ndim, np.nan, dtype=float)
+            for i, lbl in enumerate(current_labels):
+                if lbl in label_sigma and label_sigma[lbl] is not None:
+                    fisher_arr[i] = float(label_sigma[lbl])
+        else:
+            f = np.asarray(fisher_uncertainties_for_plotting).reshape(-1)
+            # Build an aligned array of size ndim, NaN where not available
+            fisher_arr = np.full(ndim, np.nan, dtype=float)
+            base_labels = None
+            base = None
+            if f.shape[0] >= 12:
+                # Assume first 12 are model params in canonical order; extra entries are flux
+                base_labels = full_labels_list[:12]
+                base = f[:12]
+            elif f.shape[0] == 9:
+                # Model-only uncertainties (no LOM)
+                base_labels = full_labels_list[:9]
+                base = f
+            elif f.shape[0] == ndim:
+                # Already aligned to current params
+                fisher_arr = f
+            else:
+                raise ValueError(
+                    f"plot_chain: 'fisher_uncertainties_for_plotting' length ({f.shape[0]}) is unsupported. "
+                    "Provide a dict label->sigma, a vector of length ndim, 9 (model-only), or >=12 (model + possibly flux)."
+                )
+
+            if base_labels is not None:
+                label_sigma = {lbl: float(val) for lbl, val in zip(base_labels, base)}
+                for i, lbl in enumerate(current_labels):
+                    if lbl in label_sigma:
+                        fisher_arr[i] = label_sigma[lbl]
 
     if labels is None:
         labels = [f"theta[{i}]" for i in range(ndim)]
+    else:
+        if len(labels) != ndim:
+            raise ValueError(
+                f"plot_chain: labels length ({len(labels)}) does not match chain ndim ({ndim})."
+            )
 
     # Handle unit-cube vs physical space plotting
     if is_unit_cube:
         # Chain is in unit-cube space - use the existing logic
-        if truths_subset is not None:
+        if truths_arr is not None:
             # Detransform the truth values to unit cube space
+            if truths_full is None:
+                raise ValueError("plot_chain: unit-cube chains require the full 12-parameter truths array for detransform.")
             u_truths_mapped = self.detransform_theta(
-                truths_subset, 
-                truths, 
+                truths_arr,
+                truths_full,
                 prange_linear,
                 prange_log,
                 normal,
@@ -543,15 +592,15 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
                 print(f"u_truths_mapped: {u_truths_mapped}")
                 print(f"Max deviation from 0.5: {np.max(np.abs(u_truths_mapped - 0.5))}")
 
-        if fisher_subset is not None and truths_subset is not None:
+        if fisher_arr is not None and truths_arr is not None:
             # Create temporary arrays for truth +/- sigma for detransformation    
-            theta_plus_sigma = np.array(truths_subset) + np.array(fisher_subset)
-            theta_minus_sigma = np.array(truths_subset) - np.array(fisher_subset)
+            theta_plus_sigma = np.array(truths_arr) + np.array(fisher_arr)
+            theta_minus_sigma = np.array(truths_arr) - np.array(fisher_arr)
 
             # Detransform these values to unit cube space
             u_plus_sigma_mapped = self.detransform_theta(
                 theta_plus_sigma,
-                truths, # truths_array
+                truths_full,
                 prange_linear,
                 prange_log,
                 normal,
@@ -560,7 +609,7 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
             
             u_minus_sigma_mapped = self.detransform_theta(
                 theta_minus_sigma,
-                truths, # truths_array
+                truths_full,
                 prange_linear,
                 prange_log,
                 normal,
@@ -581,7 +630,7 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
             ax.set_ylim(-0.1, 1.1) # Unit cube limits
 
             # Add horizontal line for the truth (in unit cube space)
-            if truths_subset is not None:
+            if truths_arr is not None:
                 ax.axhline(u_truths_mapped[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth (Unit Cube)")
 
             # Add horizontal dashed lines for 1-sigma uncertainties (in unit cube space)
@@ -590,7 +639,7 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
                 ax.axhline(u_minus_sigma_mapped[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 
             # Add legend to the first subplot only to avoid clutter
-            if i == 0 and truths_subset is not None:
+            if i == 0 and truths_arr is not None:
                 ax.legend(loc='best')
 
     else:
@@ -610,16 +659,16 @@ def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, 
             ax.set_ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
 
             # Add horizontal line for the truth (in physical space)
-            if truths_subset is not None:
-                ax.axhline(truths_subset[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth")
+            if truths_arr is not None:
+                ax.axhline(truths_arr[i], color="blue", linestyle="-", linewidth=1.5, alpha=0.7, label="Truth")
 
             # Add horizontal dashed lines for 1-sigma uncertainties (in physical space)
-            if fisher_subset is not None and truths_subset is not None:
-                ax.axhline(truths_subset[i] + fisher_subset[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7, label="Truth $\pm 1\sigma_{Fisher}$")
-                ax.axhline(truths_subset[i] - fisher_subset[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
+            if fisher_arr is not None and truths_arr is not None:
+                ax.axhline(truths_arr[i] + fisher_arr[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7, label="Truth $\pm 1\sigma_{Fisher}$")
+                ax.axhline(truths_arr[i] - fisher_arr[i], color="blue", linestyle="--", linewidth=1.0, alpha=0.7)
                 
             # Add legend to the first subplot only to avoid clutter
-            if i == 0 and truths_subset is not None:
+            if i == 0 and truths_arr is not None:
                 ax.legend(loc='best')
 
     ax = axes[-1]
