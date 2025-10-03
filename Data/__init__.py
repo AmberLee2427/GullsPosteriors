@@ -41,7 +41,14 @@ class Data:
         # Use a temporary path if _data_path is not yet set
         temp_data_dir = os.getcwd() if self._data_path is None else self._data_path
         self._load_config(temp_data_dir)
-        self._load_prm_time_correction()
+        # Avoid attempting to load a prm time correction during construction
+        # when no data directory has been initialized. Doing so produced a
+        # noisy "No SIMULATION_ZERO_TIME loaded from .prm file." message in
+        # common CLI workflows even though the prm is discovered later when
+        # the data directory is initialized. Load the prm only when a real
+        # data directory is provided (see _initialize_directory).
+        if self._data_path is not None:
+            self._load_prm_time_correction()
 
     def _load_config(self, data_dir):
         """Load or create config file for this data directory.
@@ -56,6 +63,27 @@ class Data:
         if os.path.exists(self._config_file):
             with open(self._config_file, 'r') as f:
                 self._config = json.load(f)
+
+            # Enforce absolute paths for critical file entries. The project
+            # convention is to store absolute paths in the config. If the
+            # stored paths are present but not absolute, raise a helpful error
+            # so the user can fix the config file rather than the code guessing.
+            for key in ('prm_file', 'master_file'):
+                val = self._config.get(key)
+                if val is None:
+                    continue
+                if not isinstance(val, str) or not val:
+                    continue
+                if not os.path.isabs(val):
+                    raise ValueError(
+                        f"Config file '{self._config_file}' contains a non-absolute path for '{key}': '{val}'.\n"
+                        "This code expects absolute paths in .gulls_config.json.\n"
+                        "Please update the config to use an absolute path or remove the file so it can be recreated."
+                    )
+                if not os.path.exists(val):
+                    raise FileNotFoundError(
+                        f"Configured {key} in '{self._config_file}' does not exist: '{val}'"
+                    )
         else:
             self._config = {
                 'master_file': None,
@@ -65,9 +93,51 @@ class Data:
 
     def _save_config(self):
         """Save current config to file."""
-        if self._config_file is not None:
-            with open(self._config_file, 'w') as f:
-                json.dump(self._config, f, indent=4)
+        if self._config_file is None:
+            return
+
+        cfg = dict(self._config) if isinstance(self._config, dict) else self._config
+        for key in ('prm_file', 'master_file'):
+            val = cfg.get(key)
+            if not (isinstance(val, str) and val):
+                continue
+
+            # If already absolute, keep it (normalize)
+            if os.path.isabs(val):
+                cfg[key] = os.path.abspath(val)
+                continue
+
+            # Try several resolution strategies in order, prefer ones that exist:
+            # 1) as given relative to cwd
+            # 2) joined to data directory (self._data_path + val)
+            # 3) joined to data directory using only the basename (avoid duplicated prefixes)
+            candidates = []
+            candidates.append(os.path.abspath(val))
+            if self._data_path:
+                candidates.append(os.path.abspath(os.path.join(self._data_path, val)))
+                candidates.append(os.path.abspath(os.path.join(self._data_path, os.path.basename(val))))
+
+            chosen = None
+            for cand in candidates:
+                if os.path.exists(cand):
+                    chosen = cand
+                    break
+
+            # If we found an existing candidate, save that absolute path. If not,
+            # fallback to the data_path+basename (most likely correct) if data_path exists,
+            # otherwise leave value unchanged (don't write a bogus path).
+            if chosen:
+                cfg[key] = chosen
+            else:
+                if self._data_path:
+                    cfg[key] = os.path.abspath(os.path.join(self._data_path, os.path.basename(val)))
+                else:
+                    cfg[key] = os.path.abspath(val)
+
+        with open(self._config_file, 'w') as f:
+            json.dump(cfg, f, indent=4)
+
+        self._config = cfg
 
     def _load_prm_time_correction(self, data_dir=None):
         """Load time correction from prm file if it exists.
@@ -84,6 +154,7 @@ class Data:
         # First check if we have a saved prm file path in config and it exists
         if self._config and self._config.get('prm_file') and os.path.exists(self._config['prm_file']):
             prm_path = self._config['prm_file']
+            found = False
             with open(prm_path, 'r') as f:
                 for line in f:
                     if line.startswith('SIMULATION_ZERO_TIME='):
@@ -92,7 +163,10 @@ class Data:
                             print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
                             return
                         except (ValueError, IndexError):
-                            print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+                            # Parsing failed for a configured file: treat as fatal
+                            raise RuntimeError(f"Configured prm file exists but SIMULATION_ZERO_TIME could not be parsed: {prm_path}")
+            # If we reach here the configured file did not contain the key: fatal
+            raise RuntimeError(f"Configured prm file does not contain SIMULATION_ZERO_TIME: {prm_path}")
         
         # If not found in config or path invalid, look in data_dir and current_dir
         # Loop through potential directories to find .prm file
@@ -110,25 +184,32 @@ class Data:
                     if response.lower() != 'y':
                         print("Skipping this .prm file")
                         continue
-                    
+
                     # Save the path if user confirms
                     self._config['prm_file'] = prm_path
                     self._save_config()
-                    
+
+                    # Parse the confirmed file. If the required key is missing or
+                    # unparsable, raise an error so the caller knows the selection
+                    # is invalid rather than silently continuing.
+                    sim_found = False
                     with open(prm_path, 'r') as f:
                         for line in f:
                             if line.startswith('SIMULATION_ZERO_TIME='):
                                 try:
                                     self.sim_time0 = float(line.split('=')[1].strip())
+                                    sim_found = True
                                     print(f"Loaded time correction from {prm_path}: {self.sim_time0}")
                                 except (ValueError, IndexError):
-                                    print(f"Warning: Could not parse SIMULATION_ZERO_TIME from {prm_path}")
+                                    raise RuntimeError(f"User-selected prm file exists but SIMULATION_ZERO_TIME could not be parsed: {prm_path}")
                             elif line.startswith('LD_GAMMA='):
                                 try:
                                     self.gamma = float(line.split('=')[1].strip())
                                     print(f"Loaded limb darkening gamma from {prm_path}: {self.gamma}")
                                 except (ValueError, IndexError):
                                     print(f"Warning: Could not parse LD_GAMMA from {prm_path}")
+                    if not sim_found:
+                        raise RuntimeError(f"User-selected prm file does not contain SIMULATION_ZERO_TIME: {prm_path}")
                     return
         
         print("No SIMULATION_ZERO_TIME loaded from .prm file.")
@@ -183,6 +264,11 @@ class Data:
         self.model_derivatives = None
         self._data_path = path
         self._load_config(path)
+        # Attempt to find and register a prm file in the provided data directory
+        # Attempt to find and register a prm file in the provided data directory
+        # Any errors (missing/invalid configured or user-selected prm) should
+        # propagate to the caller so failures are explicit.
+        self._load_prm_time_correction(data_dir=path)
         self._ensure_vbm_metadata()
         # Restore obs_list from config if present
         if isinstance(self._config, dict) and 'obs_list' in self._config and self._config['obs_list'] is not None:
@@ -618,6 +704,8 @@ class Data:
             "dTheta17",
             "dTheta18",
             "dTheta19",
+            "dTheta20",
+            "dTheta21",
         ]
 
         # First, read the file to see how many columns it actually has
@@ -662,6 +750,21 @@ class Data:
         # Otherwise you get annoying warnings.
 
         print(f"Data columns: {data.columns}")
+
+        # Record the number of unique observatories present in the raw
+        # lightcurve file before any obs-group filtering is applied. Some
+        # downstream logic (Fisher derivative column counts) should use the
+        # original observatory count rather than the possibly-filtered one.
+        try:
+            n_observatories_all = int(data["observatory_code"].nunique())
+        except Exception:
+            n_observatories_all = None
+        # Print diagnostic details about observatory codes for debugging
+        try:
+            unique_codes = sorted([int(x) for x in data["observatory_code"].unique()])
+            print(f"Raw observatory codes in file: {unique_codes} (count: {n_observatories_all})")
+        except Exception:
+            pass
 
         # Try to load prm file again if we don't have sim_time0
         if self.sim_time0 is None:
@@ -748,16 +851,31 @@ class Data:
                 n_flux_params = flux_derivs.shape[1]
                 print(f"Including {n_flux_params} flux derivative columns in Fisher calculation")
                 # Validate flux-parameter count: should equal 2 * number of observatories
-                try:
-                    n_observatories = int(data["observatory_code"].nunique())
-                except Exception:
-                    n_observatories = None
+                # Prefer the pre-filter observatory count when validating
+                # flux-derivative columns. If that isn't available, fall back
+                # to the current (possibly filtered) unique count.
+                n_observatories = n_observatories_all
+                if n_observatories is None:
+                    try:
+                        n_observatories = int(data["observatory_code"].nunique())
+                    except Exception:
+                        n_observatories = None
+
                 if n_observatories is not None:
                     expected_flux_params = 2 * n_observatories
                     if n_flux_params != expected_flux_params:
-                        raise ValueError(
-                            f"Fisher derivatives mismatch: found {n_flux_params} flux columns but expected {expected_flux_params} (= 2 * {n_observatories} observatories)."
-                        )
+                        # Attempt to infer observatory count from flux columns if possible
+                        if n_flux_params % 2 == 0:
+                            inferred_n_obs = n_flux_params // 2
+                            print(
+                                f"Warning: Fisher derivatives mismatch: found {n_flux_params} flux columns but expected {expected_flux_params} (= 2 * {n_observatories} obs from raw data).\n"
+                                f"Inferring {inferred_n_obs} observatories from flux columns and continuing."
+                            )
+                            n_observatories = inferred_n_obs
+                        else:
+                            raise ValueError(
+                                f"Fisher derivatives mismatch: found {n_flux_params} flux columns but expected {expected_flux_params} (= 2 * {n_observatories} observatories from raw data)."
+                            )
             else:
                 full_derivatives = model_derivs_reordered
                 n_flux_params = 0

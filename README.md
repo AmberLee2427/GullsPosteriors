@@ -70,10 +70,11 @@ python gulls_post.py 1 /path/to/data -f n   # no plots
 - `-t, --threads`: Number of threads for emcee (default: 1)
 - `-fp`: Use Fisher uncertainties to inform prior ranges
 - `-adapt`: Enable adaptive burn-in for emcee
-- `-noLOM`: Disable lens orbit motion (9 vs 12 parameters)
+- `-noLOM`: Disable lens orbit motion (9 vs 12 parameters). Should be applied when Fisher derivative are available, because simulations with Fisher derivative cannot have LOM.
 - `-prior`: Specify prior type (normal, uniform, normal-unit-cube, uniform-unit-cube)
 - `-n`: Number of samples (default: 1000)
 - `-f`: Plot control flags
+- `--obs-group`: Select an observatory group (0-indexed) defined in the active `.prm` via the `OBS_GROUPS=` tuples. When supplied the code will enable only the observatories in that group for both data selection and Fisher-uncertainty computations. Use this when you want to restrict fits to a specific subset of observatories declared in the simulation parameters.
 
 Plots and posterior samples are saved in the `posteriors/` subdirectory.
 
