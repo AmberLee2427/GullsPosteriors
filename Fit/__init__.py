@@ -507,30 +507,31 @@ class Fit:
 
         lp = self.lnprior(params, event)
         if not np.isfinite(lp):
-            # Return -inf with NaN blobs for rejected samples
-            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+            # Return -inf with empty blobs dict for rejected samples
+            return -np.inf, {}
 
         if lp < -50:  # prior is 10 sigma disfavoured for being physically unreasonable
             print("debug Fit.lnprob: lp < -50, returning -np.inf")
-            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+            return -np.inf, {}
         else: # don't call the likelihood if prior is too low
             ll = self.lnlike(params, event)
         if not np.isfinite(ll):
-            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+            return -np.inf, {}
 
         if "lnprob" in self.debug:
             print("debug Fit.lnprob: lp, ll: ", lp, ll)
             print("                  ", params)
 
-        # Extract flux parameters from cached values (averaged across observatories)
+        # Extract flux parameters from cached values (per-observatory)
+        # Each observatory has different filters, so we save them separately
+        blobs = {}
         if hasattr(self, 'last_fluxes') and len(self.last_fluxes) > 0:
-            fs_values = [fs for fs, fb in self.last_fluxes.values()]
-            fb_values = [fb for fs, fb in self.last_fluxes.values()]
-            Fs = np.mean(fs_values)
-            FB = np.mean(fb_values)
-            Fbaseline = Fs + FB
-            blobs = {"Fs": Fs, "FB": FB, "Fbaseline": Fbaseline}
+            for obs, (fs, fb) in self.last_fluxes.items():
+                blobs[f"Fs_{obs}"] = fs
+                blobs[f"FB_{obs}"] = fb
+                blobs[f"Fbaseline_{obs}"] = fs + fb
         else:
-            blobs = {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+            # Return empty dict if no fluxes computed
+            pass
 
         return lp + ll, blobs

@@ -39,21 +39,22 @@ self.last_fluxes[obs] = (fs, fb)
 Changed return value from scalar to tuple `(log_prob, blobs)`:
 
 ```python
-# Extract flux parameters from cached values (averaged across observatories)
+# Extract flux parameters from cached values (per-observatory)
+# Each observatory has different filters, so we save them separately
+blobs = {}
 if hasattr(self, 'last_fluxes') and len(self.last_fluxes) > 0:
-    fs_values = [fs for fs, fb in self.last_fluxes.values()]
-    fb_values = [fb for fs, fb in self.last_fluxes.values()]
-    Fs = np.mean(fs_values)
-    FB = np.mean(fb_values)
-    Fbaseline = Fs + FB
-    blobs = {"Fs": Fs, "FB": FB, "Fbaseline": Fbaseline}
+    for obs, (fs, fb) in self.last_fluxes.items():
+        blobs[f"Fs_{obs}"] = fs
+        blobs[f"FB_{obs}"] = fb
+        blobs[f"Fbaseline_{obs}"] = fs + fb
 else:
-    blobs = {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+    # Return empty dict if no fluxes computed
+    pass
 
 return lp + ll, blobs
 ```
 
-**Note:** Returns `np.nan` blobs for rejected samples (prior violations, etc.)
+**Note:** Returns empty dict `{}` for rejected samples (prior violations, etc.)
 
 ### 3. Modified `lnprob_transform()`
 **File:** `Fit/_emcee.py`
@@ -72,25 +73,49 @@ Added blob extraction and saving after each sampling checkpoint:
 
 ```python
 # Extract blobs (flux parameters) if available
-if hasattr(sampler, 'blobs') and sampler.blobs is not None:
-    # sampler.blobs is list of [nwalkers, nsteps] dicts
-    # Convert to structured array: [nsamples, 3] for Fs, FB, Fbaseline
-    blobs_list = []
+if hasattr(sampler, 'blobs') and sampler.blobs is not None and len(sampler.blobs) > 0:
+    # sampler.blobs is list of [step][walker] dicts
+    # Each dict has keys like: Fs_0, FB_0, Fbaseline_0, Fs_1, FB_1, etc.
+    # First, collect all unique keys from all blobs to determine columns
+    all_keys = set()
     for step_blobs in sampler.blobs:
         for walker_blob in step_blobs:
-            if walker_blob is not None:
-                blobs_list.append([walker_blob.get("Fs", np.nan), 
-                                  walker_blob.get("FB", np.nan), 
-                                  walker_blob.get("Fbaseline", np.nan)])
-    if len(blobs_list) > 0:
-        blobs_array = np.array(blobs_list)
-        np.save(
-            path + "posteriors/" + event_name + "_emcee_blobs.npy",
-            blobs_array,
-        )
+            if walker_blob is not None and isinstance(walker_blob, dict):
+                all_keys.update(walker_blob.keys())
+    
+    if len(all_keys) > 0:
+        # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
+        sorted_keys = sorted(all_keys)
+        
+        # Extract values for each sample
+        blobs_list = []
+        for step_blobs in sampler.blobs:
+            for walker_blob in step_blobs:
+                if walker_blob is not None and isinstance(walker_blob, dict):
+                    # Extract values in sorted key order, use NaN for missing keys
+                    row = [walker_blob.get(key, np.nan) for key in sorted_keys]
+                    blobs_list.append(row)
+                else:
+                    # Rejected sample - all NaN
+                    blobs_list.append([np.nan] * len(sorted_keys))
+        
+        if len(blobs_list) > 0:
+            blobs_array = np.array(blobs_list)
+            # Save both the array and the column names
+            np.save(
+                path + "posteriors/" + event_name + "_emcee_blobs.npy",
+                blobs_array,
+            )
+            # Save column names as separate file for easier loading
+            np.save(
+                path + "posteriors/" + event_name + "_emcee_blobs_keys.npy",
+                np.array(sorted_keys),
+            )
 ```
 
-**Saved file:** `{event_name}_emcee_blobs.npy` - shape `[n_samples, 3]`
+**Saved files:** 
+- `{event_name}_emcee_blobs.npy` - shape `[n_samples, n_flux_params]` (3 per observatory)
+- `{event_name}_emcee_blobs_keys.npy` - column names like `['Fs_0', 'FB_0', 'Fbaseline_0', ...]`
 
 ### 5. Modified `run_dynesty()`
 **File:** `Fit/_dynesty.py`
@@ -117,43 +142,68 @@ sampler = dynesty.DynamicNestedSampler(
 
 # After sampling...
 if hasattr(self, '_dynesty_blobs') and len(self._dynesty_blobs) > 0:
-    blobs_array = np.array([[b.get("Fs", np.nan), b.get("FB", np.nan), b.get("Fbaseline", np.nan)] 
-                            for b in self._dynesty_blobs])
-    # Take the last len(samples) blobs (corresponds to final resampled posterior)
-    if len(blobs_array) >= len(samples):
-        blobs_array = blobs_array[-len(samples):]
-    np.save(path+'posteriors/'+event_name+'_dynesty_blobs.npy', blobs_array)
+    # Collect all unique keys from all blobs
+    all_keys = set()
+    for blob in self._dynesty_blobs:
+        if blob is not None and isinstance(blob, dict):
+            all_keys.update(blob.keys())
+    
+    if len(all_keys) > 0:
+        sorted_keys = sorted(all_keys)
+        blobs_list = []
+        for blob in self._dynesty_blobs:
+            if blob is not None and isinstance(blob, dict):
+                row = [blob.get(key, np.nan) for key in sorted_keys]
+                blobs_list.append(row)
+            else:
+                blobs_list.append([np.nan] * len(sorted_keys))
+        
+        blobs_array = np.array(blobs_list)
+        if len(blobs_array) >= len(samples):
+            blobs_array = blobs_array[-len(samples):]
+        
+        np.save(path+'posteriors/'+event_name+'_dynesty_blobs.npy', blobs_array)
+        np.save(path+'posteriors/'+event_name+'_dynesty_blobs_keys.npy', np.array(sorted_keys))
+    
     del self._dynesty_blobs
 ```
 
-**Saved file:** `{event_name}_dynesty_blobs.npy` - shape `[n_samples, 3]`
+**Saved files:** 
+- `{event_name}_dynesty_blobs.npy` - shape `[n_samples, n_flux_params]`
+- `{event_name}_dynesty_blobs_keys.npy` - column names
 
 ### 6. Modified `m00_unc_check.ipynb`
 **File:** `m00_unc_check.ipynb`, cell `#VSC-be3066c8`
 
 Updated data loading to:
-1. Load blob files if they exist
+1. Load blob files and their column names if they exist
 2. Stack blobs onto samples array
-3. Update parameter_labels to include flux parameters
+3. Update parameter_labels to include per-observatory flux parameters
 
 ```python
 # Try to load flux parameter blobs
 blobs_filename = filename.replace("samples.npy", "blobs.npy")
+blobs_keys_filename = filename.replace("samples.npy", "blobs_keys.npy")
 blobs_path = output_dir + blobs_filename
-if os.path.exists(blobs_path):
+blobs_keys_path = output_dir + blobs_keys_filename
+
+if os.path.exists(blobs_path) and os.path.exists(blobs_keys_path):
     print(f"  Loading flux parameter blobs from {blobs_filename}")
     blobs = np.load(blobs_path)
+    blobs_keys = np.load(blobs_keys_path, allow_pickle=True)
     print(f"  Blobs shape: {blobs.shape}")
-    # Stack blobs onto samples: [n_samples, n_params+3]
+    print(f"  Blobs columns: {list(blobs_keys)}")
+    
+    # Stack blobs onto samples: [n_samples, n_params + n_flux_params]
     if blobs.shape[0] == samples.shape[0]:
         samples = np.hstack([samples, blobs])
         print(f"  Combined samples shape: {samples.shape}")
         # Update parameter labels to include flux parameters
-        parameter_labels = parameter_labels + ['Fs', 'FB', 'Fbaseline']
+        parameter_labels = parameter_labels + list(blobs_keys)
     else:
         print(f"  Warning: Blobs shape mismatch, skipping")
 else:
-    print(f"  No blobs file found, flux parameters not available")
+    print(f"  No blobs files found, flux parameters not available")
 ```
 
 ## Usage
@@ -163,16 +213,17 @@ else:
 When you run `gulls_post.py` now, it will automatically:
 1. Compute flux parameters during likelihood evaluation
 2. Save them as blobs alongside physical parameters
-3. Create two files per event:
+3. Create files per event:
    - `{event_name}_emcee_samples.npy` or `{event_name}_dynesty_samples.npy` - physical parameters
-   - `{event_name}_emcee_blobs.npy` or `{event_name}_dynesty_blobs.npy` - flux parameters
+   - `{event_name}_emcee_blobs.npy` or `{event_name}_dynesty_blobs.npy` - flux parameters (per-observatory)
+   - `{event_name}_emcee_blobs_keys.npy` or `{event_name}_dynesty_blobs_keys.npy` - column names
 
 ### Loading Samples in Analysis
 
 The notebook will automatically detect and load blob files:
-- If blobs exist: samples array shape is `[n_samples, n_params+3]` with flux parameters appended
+- If blobs exist: samples array shape is `[n_samples, n_params + n_flux_params]` with per-observatory flux parameters appended
 - If blobs don't exist: samples array shape is `[n_samples, n_params]` with only physical parameters
-- Parameter labels automatically updated to include `['Fs', 'FB', 'Fbaseline']` when blobs are loaded
+- Parameter labels automatically updated to include per-observatory flux parameters like `['Fs_0', 'FB_0', 'Fbaseline_0', 'Fs_1', ...]` when blobs are loaded
 
 ### Backward Compatibility
 
@@ -183,15 +234,19 @@ Code is fully backward compatible:
 
 ## Flux Parameter Definitions
 
-- **Fs** (Source Flux): Flux from the lensed source star, averaged across observatories
-- **FB** (Blend Flux): Flux from unlensed blend sources, averaged across observatories
-- **Fbaseline** (Baseline Flux): Total flux baseline = Fs + FB
+**Per-observatory flux parameters** (where N is the observatory code 0, 1, 2, etc.):
+
+- **Fs_N** (Source Flux): Flux from the lensed source star at observatory N
+- **FB_N** (Blend Flux): Flux from unlensed blend sources at observatory N
+- **Fbaseline_N** (Baseline Flux): Total flux baseline at observatory N = Fs_N + FB_N
 
 These are computed via weighted linear least squares during chi-square calculation:
 ```
 F_observed = Fs * A + FB
 ```
 where A is the magnification from the binary lens model.
+
+**Why per-observatory?** Each observatory uses different filters (W146, Z087, K213), so flux values are **not comparable** across observatories and should not be averaged. Saving them separately preserves the physical meaning.
 
 ## Performance
 
@@ -200,13 +255,13 @@ where A is the magnification from the binary lens model.
 ## Testing
 
 To test with existing samples:
-1. Re-run MCMC on a test event - blobs will be saved automatically
+1. Re-run MCMC on a test event - blobs will be saved automatically (both .npy and _keys.npy files)
 2. Run `m00_unc_check.ipynb` - it should detect and load the blobs
-3. Check that `parameter_labels` includes `['Fs', 'FB', 'Fbaseline']`
-4. Verify samples array has 3 additional columns
+3. Check that `parameter_labels` includes per-observatory flux parameters like `['Fs_0', 'FB_0', 'Fbaseline_0', ...]`
+4. Verify samples array has additional columns (3 per observatory)
 
 ## Future Work
 
-- Add flux parameters to corner plots (currently only physical params are plotted)
-- Consider saving per-observatory flux parameters instead of just the mean
+- Add per-observatory flux parameters to corner plots (currently only physical params are plotted)
 - Add flux parameter uncertainties to comparison tables
+- Consider adding flux parameter priors to the sampling

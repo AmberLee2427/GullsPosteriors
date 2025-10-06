@@ -573,14 +573,36 @@ def run_dynesty(self, event, event_name, ndim, path, truths, prange_linear, pran
     
     # Save blobs if they were collected
     if hasattr(self, '_dynesty_blobs') and len(self._dynesty_blobs) > 0:
-        # Convert list of dicts to array: [nsamples, 3] for Fs, FB, Fbaseline
-        blobs_array = np.array([[b.get("Fs", np.nan), b.get("FB", np.nan), b.get("Fbaseline", np.nan)] 
-                                for b in self._dynesty_blobs])
-        # Dynesty samples are already weighted/resampled, so align blobs with samples
-        # Take the last len(samples) blobs (corresponds to final resampled posterior)
-        if len(blobs_array) >= len(samples):
-            blobs_array = blobs_array[-len(samples):]
-        np.save(path+'posteriors/'+event_name+'_dynesty_blobs.npy', blobs_array)
+        # Collect all unique keys from all blobs
+        all_keys = set()
+        for blob in self._dynesty_blobs:
+            if blob is not None and isinstance(blob, dict):
+                all_keys.update(blob.keys())
+        
+        if len(all_keys) > 0:
+            # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
+            sorted_keys = sorted(all_keys)
+            
+            # Convert list of dicts to array with sorted key order
+            blobs_list = []
+            for blob in self._dynesty_blobs:
+                if blob is not None and isinstance(blob, dict):
+                    row = [blob.get(key, np.nan) for key in sorted_keys]
+                    blobs_list.append(row)
+                else:
+                    blobs_list.append([np.nan] * len(sorted_keys))
+            
+            blobs_array = np.array(blobs_list)
+            
+            # Dynesty samples are already weighted/resampled, so align blobs with samples
+            # Take the last len(samples) blobs (corresponds to final resampled posterior)
+            if len(blobs_array) >= len(samples):
+                blobs_array = blobs_array[-len(samples):]
+            
+            np.save(path+'posteriors/'+event_name+'_dynesty_blobs.npy', blobs_array)
+            # Save column names as separate file for easier loading
+            np.save(path+'posteriors/'+event_name+'_dynesty_blobs_keys.npy', np.array(sorted_keys))
+        
         # Clear for next run
         del self._dynesty_blobs
     

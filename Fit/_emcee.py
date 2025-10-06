@@ -115,22 +115,44 @@ def run_emcee(
                 flatlnprobability = sampler.flatlnprobability
                 
                 # Extract blobs (flux parameters) if available
-                if hasattr(sampler, 'blobs') and sampler.blobs is not None:
-                    # sampler.blobs is list of [nwalkers, nsteps] dicts
-                    # Convert to structured array: [nsamples, 3] for Fs, FB, Fbaseline
-                    blobs_list = []
+                if hasattr(sampler, 'blobs') and sampler.blobs is not None and len(sampler.blobs) > 0:
+                    # sampler.blobs is list of [step][walker] dicts
+                    # Each dict has keys like: Fs_0, FB_0, Fbaseline_0, Fs_1, FB_1, etc.
+                    # First, collect all unique keys from all blobs to determine columns
+                    all_keys = set()
                     for step_blobs in sampler.blobs:
                         for walker_blob in step_blobs:
-                            if walker_blob is not None:
-                                blobs_list.append([walker_blob.get("Fs", np.nan), 
-                                                  walker_blob.get("FB", np.nan), 
-                                                  walker_blob.get("Fbaseline", np.nan)])
-                    if len(blobs_list) > 0:
-                        blobs_array = np.array(blobs_list)
-                        np.save(
-                            path + "posteriors/" + event_name + "_emcee_blobs.npy",
-                            blobs_array,
-                        )
+                            if walker_blob is not None and isinstance(walker_blob, dict):
+                                all_keys.update(walker_blob.keys())
+                    
+                    if len(all_keys) > 0:
+                        # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
+                        sorted_keys = sorted(all_keys)
+                        
+                        # Extract values for each sample
+                        blobs_list = []
+                        for step_blobs in sampler.blobs:
+                            for walker_blob in step_blobs:
+                                if walker_blob is not None and isinstance(walker_blob, dict):
+                                    # Extract values in sorted key order, use NaN for missing keys
+                                    row = [walker_blob.get(key, np.nan) for key in sorted_keys]
+                                    blobs_list.append(row)
+                                else:
+                                    # Rejected sample - all NaN
+                                    blobs_list.append([np.nan] * len(sorted_keys))
+                        
+                        if len(blobs_list) > 0:
+                            blobs_array = np.array(blobs_list)
+                            # Save both the array and the column names
+                            np.save(
+                                path + "posteriors/" + event_name + "_emcee_blobs.npy",
+                                blobs_array,
+                            )
+                            # Save column names as separate file for easier loading
+                            np.save(
+                                path + "posteriors/" + event_name + "_emcee_blobs_keys.npy",
+                                np.array(sorted_keys),
+                            )
 
                 # Save the samples
                 np.save(
@@ -176,22 +198,44 @@ def run_emcee(
             flatlnprobability = sampler.flatlnprobability
             
             # Extract blobs (flux parameters) if available
-            if hasattr(sampler, 'blobs') and sampler.blobs is not None:
-                # sampler.blobs is list of [nwalkers, nsteps] dicts
-                # Convert to structured array: [nsamples, 3] for Fs, FB, Fbaseline
-                blobs_list = []
+            if hasattr(sampler, 'blobs') and sampler.blobs is not None and len(sampler.blobs) > 0:
+                # sampler.blobs is list of [step][walker] dicts
+                # Each dict has keys like: Fs_0, FB_0, Fbaseline_0, Fs_1, FB_1, etc.
+                # First, collect all unique keys from all blobs to determine columns
+                all_keys = set()
                 for step_blobs in sampler.blobs:
                     for walker_blob in step_blobs:
-                        if walker_blob is not None:
-                            blobs_list.append([walker_blob.get("Fs", np.nan), 
-                                              walker_blob.get("FB", np.nan), 
-                                              walker_blob.get("Fbaseline", np.nan)])
-                if len(blobs_list) > 0:
-                    blobs_array = np.array(blobs_list)
-                    np.save(
-                        path + "posteriors/" + event_name + "_emcee_blobs.npy",
-                        blobs_array,
-                    )
+                        if walker_blob is not None and isinstance(walker_blob, dict):
+                            all_keys.update(walker_blob.keys())
+                
+                if len(all_keys) > 0:
+                    # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
+                    sorted_keys = sorted(all_keys)
+                    
+                    # Extract values for each sample
+                    blobs_list = []
+                    for step_blobs in sampler.blobs:
+                        for walker_blob in step_blobs:
+                            if walker_blob is not None and isinstance(walker_blob, dict):
+                                # Extract values in sorted key order, use NaN for missing keys
+                                row = [walker_blob.get(key, np.nan) for key in sorted_keys]
+                                blobs_list.append(row)
+                            else:
+                                # Rejected sample - all NaN
+                                blobs_list.append([np.nan] * len(sorted_keys))
+                    
+                    if len(blobs_list) > 0:
+                        blobs_array = np.array(blobs_list)
+                        # Save both the array and the column names
+                        np.save(
+                            path + "posteriors/" + event_name + "_emcee_blobs.npy",
+                            blobs_array,
+                        )
+                        # Save column names as separate file for easier loading
+                        np.save(
+                            path + "posteriors/" + event_name + "_emcee_blobs_keys.npy",
+                            np.array(sorted_keys),
+                        )
 
             # Save the samples
             np.save(
