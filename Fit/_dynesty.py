@@ -530,8 +530,17 @@ def run_dynesty(self, event, event_name, ndim, path, truths, prange_linear, pran
     # For old code compatibility, create single prange array
     prange = np.concatenate([prange_log, prange_linear])
     
+    # Wrapper to extract only log-probability from lnprob (which returns (lp, blobs))
+    def loglike_wrapper(theta, event):
+        lp, blobs = self.lnprob(theta, event)
+        # Store blobs for later extraction (dynesty doesn't support blobs natively)
+        if not hasattr(self, '_dynesty_blobs'):
+            self._dynesty_blobs = []
+        self._dynesty_blobs.append(blobs)
+        return lp
+    
     sampler = dynesty.DynamicNestedSampler(
-        self.lnprob,  # Use lnprob directly, not lnprob_transform
+        loglike_wrapper,  # Use wrapper that extracts only log-probability
         self.prior_transform, 
         ndim, 
         nlive=100,  # Reduced from 200
@@ -561,5 +570,18 @@ def run_dynesty(self, event, event_name, ndim, path, truths, prange_linear, pran
 
     samples = res.samples
     np.save(path+'posteriors/'+event_name+'_post_samples.npy', samples)
+    
+    # Save blobs if they were collected
+    if hasattr(self, '_dynesty_blobs') and len(self._dynesty_blobs) > 0:
+        # Convert list of dicts to array: [nsamples, 3] for Fs, FB, Fbaseline
+        blobs_array = np.array([[b.get("Fs", np.nan), b.get("FB", np.nan), b.get("Fbaseline", np.nan)] 
+                                for b in self._dynesty_blobs])
+        # Dynesty samples are already weighted/resampled, so align blobs with samples
+        # Take the last len(samples) blobs (corresponds to final resampled posterior)
+        if len(blobs_array) >= len(samples):
+            blobs_array = blobs_array[-len(samples):]
+        np.save(path+'posteriors/'+event_name+'_dynesty_blobs.npy', blobs_array)
+        # Clear for next run
+        del self._dynesty_blobs
     
     return sampler

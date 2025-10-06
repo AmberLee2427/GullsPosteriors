@@ -113,6 +113,24 @@ def run_emcee(
                 state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
                 flatchain = sampler.flatchain
                 flatlnprobability = sampler.flatlnprobability
+                
+                # Extract blobs (flux parameters) if available
+                if hasattr(sampler, 'blobs') and sampler.blobs is not None:
+                    # sampler.blobs is list of [nwalkers, nsteps] dicts
+                    # Convert to structured array: [nsamples, 3] for Fs, FB, Fbaseline
+                    blobs_list = []
+                    for step_blobs in sampler.blobs:
+                        for walker_blob in step_blobs:
+                            if walker_blob is not None:
+                                blobs_list.append([walker_blob.get("Fs", np.nan), 
+                                                  walker_blob.get("FB", np.nan), 
+                                                  walker_blob.get("Fbaseline", np.nan)])
+                    if len(blobs_list) > 0:
+                        blobs_array = np.array(blobs_list)
+                        np.save(
+                            path + "posteriors/" + event_name + "_emcee_blobs.npy",
+                            blobs_array,
+                        )
 
                 # Save the samples
                 np.save(
@@ -156,6 +174,24 @@ def run_emcee(
             state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
             flatchain = sampler.flatchain
             flatlnprobability = sampler.flatlnprobability
+            
+            # Extract blobs (flux parameters) if available
+            if hasattr(sampler, 'blobs') and sampler.blobs is not None:
+                # sampler.blobs is list of [nwalkers, nsteps] dicts
+                # Convert to structured array: [nsamples, 3] for Fs, FB, Fbaseline
+                blobs_list = []
+                for step_blobs in sampler.blobs:
+                    for walker_blob in step_blobs:
+                        if walker_blob is not None:
+                            blobs_list.append([walker_blob.get("Fs", np.nan), 
+                                              walker_blob.get("FB", np.nan), 
+                                              walker_blob.get("Fbaseline", np.nan)])
+                if len(blobs_list) > 0:
+                    blobs_array = np.array(blobs_list)
+                    np.save(
+                        path + "posteriors/" + event_name + "_emcee_blobs.npy",
+                        blobs_array,
+                    )
 
             # Save the samples
             np.save(
@@ -441,10 +477,10 @@ def lnprob_transform(
     theta = self.prior_transform(u, truths_dict['params'], prange_linear, prange_log, normal, fisher_uncertainties_for_prior)
 
     # Calculate the log probability (likelihood) with the transformed
-    # parameters
-    lp = self.lnprob(theta, event)
+    # parameters (lnprob returns (log_prob, blobs))
+    lp, blobs = self.lnprob(theta, event)
 
-    return lp
+    return lp, blobs
 
 
 def plot_chain(self, res, event_name, path, burnin_or_post="post", labels=None, truths=None, fisher_uncertainties_for_plotting=None, fisher_uncertainties_for_prior=None, prange_linear=None, prange_log=None, normal=False):

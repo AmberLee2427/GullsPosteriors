@@ -262,6 +262,9 @@ class Fit:
         event.set_params(params)
         chi2sum = 0.0
         chi2 = {}
+        
+        # Initialize cache for flux parameters (for blobs)
+        self.last_fluxes = {}
 
         for obs in event.data.keys():  # looping through observatories
             t = event.data[obs][0]  # BJD
@@ -276,6 +279,9 @@ class Fit:
             if A is None:
                 return None, np.inf
             fs, fb = self.get_fluxes(A, f, f_err**2)
+            
+            # Cache flux parameters for blobs
+            self.last_fluxes[obs] = (fs, fb)
 
             chi2[obs] = ((f - (A * fs + fb)) / f_err) ** 2
 
@@ -501,18 +507,30 @@ class Fit:
 
         lp = self.lnprior(params, event)
         if not np.isfinite(lp):
-            return -np.inf
+            # Return -inf with NaN blobs for rejected samples
+            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
 
         if lp < -50:  # prior is 10 sigma disfavoured for being physically unreasonable
             print("debug Fit.lnprob: lp < -50, returning -np.inf")
-            return -np.inf
+            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
         else: # don't call the likelihood if prior is too low
             ll = self.lnlike(params, event)
         if not np.isfinite(ll):
-            return -np.inf
+            return -np.inf, {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
 
         if "lnprob" in self.debug:
             print("debug Fit.lnprob: lp, ll: ", lp, ll)
             print("                  ", params)
 
-        return lp + ll
+        # Extract flux parameters from cached values (averaged across observatories)
+        if hasattr(self, 'last_fluxes') and len(self.last_fluxes) > 0:
+            fs_values = [fs for fs, fb in self.last_fluxes.values()]
+            fb_values = [fb for fs, fb in self.last_fluxes.values()]
+            Fs = np.mean(fs_values)
+            FB = np.mean(fb_values)
+            Fbaseline = Fs + FB
+            blobs = {"Fs": Fs, "FB": FB, "Fbaseline": Fbaseline}
+        else:
+            blobs = {"Fs": np.nan, "FB": np.nan, "Fbaseline": np.nan}
+
+        return lp + ll, blobs
