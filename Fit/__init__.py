@@ -62,7 +62,8 @@ class Fit:
         ndim=None,
         labels=None,
         show_progress=False,
-        sigma_fb=50.0,
+        sigma_fb=0.2,  # Prior width for negative blend flux (relative to baseline~1)
+        sigma_fs=0.05,  # Prior width for negative source flux and excess baseline
         sigma_logrho=0.2,
         sigma_logq=0.5,
         sigma_logs=0.5,
@@ -93,7 +94,17 @@ class Fit:
         show_progress : bool, optional
             Whether to show progress bars during MCMC sampling.
         sigma_fb : float, optional
-            Standard deviation for the Gaussian prior on negative blend flux.
+            Standard deviation for one-sided Gaussian prior on negative blend flux.
+            Applied when fb < 0 to gently penalize large negative blend while allowing
+            small negative values (realistic for faint lenses or photometric noise).
+            Should be scaled to match relative flux units (typically ~0.1-0.2 for 
+            relative flux normalized to 1.0). Default: 0.2
+        sigma_fs : float, optional
+            Standard deviation for one-sided Gaussian priors on:
+            (1) negative source flux (fs < 0), and 
+            (2) excess baseline flux (fs + fb > 1.0).
+            Stricter than sigma_fb to enforce physical constraints more strongly.
+            Default: 0.05
 
         Attributes
         ----------
@@ -140,6 +151,7 @@ class Fit:
         self.show_progress = show_progress  # NEW: Store show_progress
         self.current_event = None  # NEW: Store current event
         self.sigma_fb = sigma_fb  # NEW: Store sigma_fb
+        self.sigma_fs = sigma_fs  # NEW: Store sigma_fs for source flux and baseline priors
         self.sigma_logrho = sigma_logrho  # NEW: Store sigma_logrho
         self.sigma_logq = sigma_logq  # NEW: Store sigma_logq
         self.sigma_logs = sigma_logs  # NEW: Store sigma_logs
@@ -375,15 +387,31 @@ class Fit:
                         return -np.inf
                     f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
                     f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
-                    _, fb = self.get_fluxes(A, f, f_err**2)
+                    fs, fb = self.get_fluxes(A, f, f_err**2)
                     
-                    # Add Gaussian prior on negative blend flux
+                    # Add Gaussian priors on flux parameters
                     if self.normal and not self.unit_cube:
                         lp = 0.0
+                        # Penalize negative blend flux (one-sided prior)
                         if fb < 0:
                             # Allow small negative values but penalize large ones
                             lp += -0.5 * (fb / self.sigma_fb)**2
-                            print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
+                            if fb < -5 * self.sigma_fb:  # Only print if severely violated (>5 sigma)
+                                print(f"WARNING: Large negative blend flux - fb: {fb:.3f}, sigma_fb: {self.sigma_fb}, lp: {lp:.2f}")
+                        # Penalize negative source flux (one-sided prior, stricter)
+                        if fs < 0:
+                            # Source flux should be positive
+                            lp += -0.5 * (fs / self.sigma_fs)**2
+                            if fs < -5 * self.sigma_fs:  # Only print if severely violated (>5 sigma)
+                                print(f"WARNING: Large negative source flux - fs: {fs:.3f}, sigma_fs: {self.sigma_fs}, lp: {lp:.2f}")
+                        # Penalize baseline flux > 1 (one-sided prior, stricter)
+                        fbaseline = fs + fb
+                        if fbaseline > 1.0:
+                            # Baseline normalized to ~1, penalize excess
+                            excess = fbaseline - 1.0
+                            lp += -0.5 * (excess / self.sigma_fs)**2
+                            if excess > 5 * self.sigma_fs:  # Only print if severely violated (>5 sigma)
+                                print(f"WARNING: Large excess baseline flux - fbaseline: {fbaseline:.3f}, excess: {excess:.3f}, sigma_fs: {self.sigma_fs}, lp: {lp:.2f}")
                         if q > 1:  # gently disuade primary swapping
                             lp += -0.5 * ((q - 1) / self.sigma_q)**2
                             print(f"q: {q}, sigma_q: {self.sigma_q}, lp: {lp}")
@@ -416,14 +444,29 @@ class Fit:
                         return -np.inf
                     f = current_event.data[list(current_event.data.keys())[0]][1]  # Get fluxes
                     f_err = current_event.data[list(current_event.data.keys())[0]][2]  # Get errors
-                    _, fb = self.get_fluxes(A, f, f_err**2)
+                    fs, fb = self.get_fluxes(A, f, f_err**2)
                  
                     lp = 0.0
+                    # Penalize negative blend flux (one-sided prior)
                     if fb < 0:
                         # Allow small negative values but penalize large ones
                         lp += -0.5 * (fb / self.sigma_fb)**2
-                        if fb < -5 * self.sigma_fb:
-                            print(f"fb: {fb}, sigma_fb: {self.sigma_fb}, lp: {lp}")
+                        if fb < -5 * self.sigma_fb:  # Only print if severely violated (>5 sigma)
+                            print(f"WARNING: Large negative blend flux - fb: {fb:.3f}, sigma_fb: {self.sigma_fb}, lp: {lp:.2f}")
+                    # Penalize negative source flux (one-sided prior, stricter)
+                    if fs < 0:
+                        # Source flux should be positive
+                        lp += -0.5 * (fs / self.sigma_fs)**2
+                        if fs < -5 * self.sigma_fs:  # Only print if severely violated (>5 sigma)
+                            print(f"WARNING: Large negative source flux - fs: {fs:.3f}, sigma_fs: {self.sigma_fs}, lp: {lp:.2f}")
+                    # Penalize baseline flux > 1 (one-sided prior, stricter)
+                    fbaseline = fs + fb
+                    if fbaseline > 1.0:
+                        # Baseline normalized to ~1, penalize excess
+                        excess = fbaseline - 1.0
+                        lp += -0.5 * (excess / self.sigma_fs)**2
+                        if excess > 5 * self.sigma_fs:  # Only print if severely violated (>5 sigma)
+                            print(f"WARNING: Large excess baseline flux - fbaseline: {fbaseline:.3f}, excess: {excess:.3f}, sigma_fs: {self.sigma_fs}, lp: {lp:.2f}")
 
                     # normal prior about the truth (only if true_params is available)
                     if self.normal and not self.unit_cube and self.true_params is not None:

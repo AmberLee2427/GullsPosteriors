@@ -264,4 +264,4 @@ To test with existing samples:
 
 - Add per-observatory flux parameters to corner plots (currently only physical params are plotted)
 - Add flux parameter uncertainties to comparison tables
-- Consider adding flux parameter priors to the sampling
+- Consider adding flux parameter priors to the sampling (DONE)
