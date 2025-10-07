@@ -35,8 +35,13 @@ conda activate GullsPosteriors
 python -c "import emcee; import dynesty; import VBMicrolensing; print('Installation successful!')"
 ```
 
-Key dependencies include Python 3.8, `emcee`, `dynesty` and the external
+Key dependencies include Python 3.8+, `emcee` (version 3.0+), `dynesty` and the external
 `VBMicrolensing` package.
+
+**Note:** This code requires `emcee` version 3.0 or higher. The sampling and blobs handling APIs changed significantly between emcee 2.x and 3.x. If you have an older version installed, upgrade with:
+```bash
+pip install --upgrade emcee
+```
 
 ## Example usage
 

@@ -901,7 +901,10 @@ def run(args):
                 print(f"Saved final lightcurve plot: {path}posteriors/{event_name}_final_lightcurve.png")
                 
             except Exception as e:
+                import traceback
                 print(f"Warning: final lightcurve plotting failed for {event_name}: {e}")
+                print("Traceback:")
+                traceback.print_exc()
 
         print(f"Event {i} ({event_name}) is done")
         if not os.path.exists(path + "emcee_complete.txt"):

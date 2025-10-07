@@ -110,39 +110,80 @@ def run_emcee(
             count = 0
             steps = 0
             while steps < mi:
-                state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
+                # In emcee 3.x, run_mcmc returns a State object
+                state = sampler.run_mcmc(state, stepi, progress=self.show_progress)
                 flatchain = sampler.flatchain
                 flatlnprobability = sampler.flatlnprobability
                 
+                
                 # Extract blobs (flux parameters) if available
-                if hasattr(sampler, 'blobs') and sampler.blobs is not None and len(sampler.blobs) > 0:
-                    # sampler.blobs is list of [step][walker] dicts
-                    # Each dict has keys like: Fs_0, FB_0, Fbaseline_0, Fs_1, FB_1, etc.
+                # Use get_blobs() instead of deprecated .blobs property
+                try:
+                    blobs_data = sampler.get_blobs(flat=False)
+                except AttributeError:
+                    blobs_data = None
+                
+                if blobs_data is not None and len(blobs_data) > 0:
+                    print(f"DEBUG: blobs_data type: {type(blobs_data)}")
+                    print(f"DEBUG: blobs_data shape: {blobs_data.shape}")
+                    print(f"DEBUG: blobs_data dtype: {blobs_data.dtype}")
+                    if blobs_data.size > 0:
+                        print(f"DEBUG: First blob element type: {type(blobs_data.flat[0])}")
+                        print(f"DEBUG: First blob element: {blobs_data.flat[0]}")
+                    
+                    # blobs_data has shape (nsteps, nwalkers) with dtype object
+                    # Each element is a dict or None
                     # First, collect all unique keys from all blobs to determine columns
                     all_keys = set()
-                    for step_blobs in sampler.blobs:
+                    for step_blobs in blobs_data:
                         for walker_blob in step_blobs:
                             if walker_blob is not None and isinstance(walker_blob, dict):
                                 all_keys.update(walker_blob.keys())
+                    
+                    print(f"DEBUG: Found {len(all_keys)} unique keys in blobs")
+                    print(f"DEBUG: Keys: {sorted(all_keys)[:10] if len(all_keys) > 10 else sorted(all_keys)}")
                     
                     if len(all_keys) > 0:
                         # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
                         sorted_keys = sorted(all_keys)
                         
-                        # Extract values for each sample
+                        # Extract values for each sample - must ensure consistent shape
                         blobs_list = []
-                        for step_blobs in sampler.blobs:
-                            for walker_blob in step_blobs:
+                        for step_idx, step_blobs in enumerate(blobs_data):
+                            for walker_idx, walker_blob in enumerate(step_blobs):
                                 if walker_blob is not None and isinstance(walker_blob, dict):
                                     # Extract values in sorted key order, use NaN for missing keys
-                                    row = [walker_blob.get(key, np.nan) for key in sorted_keys]
-                                    blobs_list.append(row)
+                                    row = []
+                                    for key in sorted_keys:
+                                        val = walker_blob.get(key, np.nan)
+                                        # Debug first few values
+                                        if step_idx == 0 and walker_idx == 0 and len(row) < 3:
+                                            print(f"DEBUG: key={key}, val={val}, type={type(val)}")
+                                        row.append(float(val))
                                 else:
                                     # Rejected sample - all NaN
-                                    blobs_list.append([np.nan] * len(sorted_keys))
+                                    row = [np.nan] * len(sorted_keys)
+                                blobs_list.append(row)
                         
+                        print(f"DEBUG: Created {len(blobs_list)} blob rows")
                         if len(blobs_list) > 0:
-                            blobs_array = np.array(blobs_list)
+                            # Ensure all rows have same length before converting to array
+                            row_lengths = [len(row) for row in blobs_list]
+                            unique_lengths = set(row_lengths)
+                            print(f"DEBUG: Unique row lengths: {unique_lengths}")
+                            if len(unique_lengths) > 1:
+                                print(f"WARNING: Inconsistent blob row lengths: {unique_lengths}")
+                                print(f"Expected {len(sorted_keys)} columns")
+                                # Pad or truncate rows to match expected length
+                                for i, row in enumerate(blobs_list):
+                                    if len(row) < len(sorted_keys):
+                                        blobs_list[i] = row + [np.nan] * (len(sorted_keys) - len(row))
+                                    elif len(row) > len(sorted_keys):
+                                        blobs_list[i] = row[:len(sorted_keys)]
+                            
+                            print(f"DEBUG: Converting to numpy array with shape ({len(blobs_list)}, {len(blobs_list[0])})")
+                            blobs_array = np.array(blobs_list, dtype=float)
+                            print(f"DEBUG: Successfully created array with shape {blobs_array.shape}")
                             # Save both the array and the column names
                             np.save(
                                 path + "posteriors/" + event_name + "_emcee_blobs.npy",
@@ -163,9 +204,10 @@ def run_emcee(
                     path + "posteriors/" + event_name + "_emcee_lnprob.npy",
                     flatlnprobability,
                 )
+                # Save state coordinates only (state object itself can't be saved when it has dict blobs)
                 np.save(
-                    path + "posteriors/" + event_name + "_emcee_state.npy",
-                    state,
+                    path + "posteriors/" + event_name + "_emcee_state_coords.npy",
+                    state.coords,
                 )
 
                 # Pass the actual truths['params'] and fisher_uncertainties to plot_chain
@@ -193,7 +235,8 @@ def run_emcee(
         steps = 0
         count = 0
         while steps < mi:
-            state, lnp, _ = sampler.run_mcmc(state, stepi, progress=self.show_progress)
+            # In emcee 3.x, run_mcmc returns a State object
+            state = sampler.run_mcmc(state, stepi, progress=self.show_progress)
             flatchain = sampler.flatchain
             flatlnprobability = sampler.flatlnprobability
             
@@ -212,20 +255,32 @@ def run_emcee(
                     # Sort keys for consistent ordering (Fs_0, FB_0, Fbaseline_0, Fs_1, ...)
                     sorted_keys = sorted(all_keys)
                     
-                    # Extract values for each sample
+                    # Extract values for each sample - must ensure consistent shape
                     blobs_list = []
                     for step_blobs in sampler.blobs:
                         for walker_blob in step_blobs:
                             if walker_blob is not None and isinstance(walker_blob, dict):
                                 # Extract values in sorted key order, use NaN for missing keys
-                                row = [walker_blob.get(key, np.nan) for key in sorted_keys]
-                                blobs_list.append(row)
+                                row = [float(walker_blob.get(key, np.nan)) for key in sorted_keys]
                             else:
                                 # Rejected sample - all NaN
-                                blobs_list.append([np.nan] * len(sorted_keys))
+                                row = [np.nan] * len(sorted_keys)
+                            blobs_list.append(row)
                     
                     if len(blobs_list) > 0:
-                        blobs_array = np.array(blobs_list)
+                        # Ensure all rows have same length before converting to array
+                        row_lengths = [len(row) for row in blobs_list]
+                        if len(set(row_lengths)) > 1:
+                            print(f"WARNING: Inconsistent blob row lengths: {set(row_lengths)}")
+                            print(f"Expected {len(sorted_keys)} columns")
+                            # Pad or truncate rows to match expected length
+                            for i, row in enumerate(blobs_list):
+                                if len(row) < len(sorted_keys):
+                                    blobs_list[i] = row + [np.nan] * (len(sorted_keys) - len(row))
+                                elif len(row) > len(sorted_keys):
+                                    blobs_list[i] = row[:len(sorted_keys)]
+                        
+                        blobs_array = np.array(blobs_list, dtype=float)
                         # Save both the array and the column names
                         np.save(
                             path + "posteriors/" + event_name + "_emcee_blobs.npy",
@@ -246,8 +301,10 @@ def run_emcee(
                 path + "posteriors/" + event_name + "_emcee_lnprob.npy",
                 flatlnprobability,
             )
+            # Save state coordinates only (state object itself can't be saved when it has dict blobs)
             np.save(
-                path + "posteriors/" + event_name + "_emcee_state.npy", state
+                path + "posteriors/" + event_name + "_emcee_state_coords.npy",
+                state.coords,
             )
 
             if self.plot_chains:
@@ -853,6 +910,7 @@ def corner_post(
     # If uncertainties not supplied, derive from whichever covariance is active
     if fisher_uncertainties is None and active_cov is not None:
         fisher_uncertainties = np.sqrt(np.diag(active_cov))
+    
     # Determine the number of parameters from samples shape
     ndim = samples.shape[1]
     
@@ -876,6 +934,25 @@ def corner_post(
     # Trim labels and truths to match actual number of parameters
     labels = labels[:ndim]
     true_params = true_params[:ndim]
+    
+    # Convert fisher_uncertainties to array format if it's a dict
+    if fisher_uncertainties is not None and isinstance(fisher_uncertainties, dict):
+        full_labels_list = ["s", "q", "rho", "u0", "alpha", "t0", "tE", "piEE", "piEN", "i", "phase", "period"]
+        fisher_arr = np.full(ndim, np.nan, dtype=float)
+        label_map = {
+            r"$\log_{10}s$": "s", r"$\log_{10}q$": "q", r"$\log_{10}{\rho}$": "rho",
+            r"$u_0$": "u0", r"$\alpha$": "alpha", r"$t_0$": "t0", r"$\log_{10}t_E$": "tE",
+            r"$\pi_{EE}$": "piEE", r"$\pi_{EN}$": "piEN",
+            r"$i$": "i", r"$\phi$": "phase", r"$\log_{10}{period}$": "period"
+        }
+        for i in range(ndim):
+            simple_label = label_map.get(labels[i])
+            if simple_label and simple_label in fisher_uncertainties:
+                fisher_arr[i] = float(fisher_uncertainties[simple_label])
+        fisher_uncertainties = fisher_arr
+    elif fisher_uncertainties is not None:
+        # Already an array, just ensure it's numpy array
+        fisher_uncertainties = np.asarray(fisher_uncertainties).reshape(-1)
     
     if log_param_names is None:
         log_param_names = ["s", "q", "rho", "tE", "period"]

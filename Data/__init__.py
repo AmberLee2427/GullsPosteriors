@@ -229,8 +229,14 @@ class Data:
 
         if 'version' not in vbm_meta:
             try:
-                import VBMicrolensing  # pylint: disable=import-error
-                version = getattr(VBMicrolensing, '__version__', getattr(VBMicrolensing, 'VERSION', 'unknown'))
+                # Try importlib.metadata first (modern approach)
+                from importlib.metadata import version as get_version, PackageNotFoundError
+                try:
+                    version = get_version('VBMicrolensing')
+                except PackageNotFoundError:
+                    # Fallback to checking module attributes
+                    import VBMicrolensing  # pylint: disable=import-error
+                    version = getattr(VBMicrolensing, '__version__', getattr(VBMicrolensing, 'VERSION', 'unknown'))
             except ImportError:
                 version = 'unavailable'
             vbm_meta['version'] = version
