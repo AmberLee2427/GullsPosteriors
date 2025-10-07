@@ -703,12 +703,10 @@ def run(args):
         np.save(path + f"posteriors/{event_name}_post_samples.npy", samples_phys)
 
         def _save_vbm_array(label, data_list):
+            """Save VBM failure logs. Empty array means zero failures (good info to keep)."""
             outfile = path + f"posteriors/{event_name}_{label}.npy"
-            if data_list:
-                arr = np.asarray(data_list, dtype=float)
-                np.save(outfile, arr)
-            elif os.path.exists(outfile):
-                os.remove(outfile)
+            arr = np.asarray(data_list, dtype=float) if data_list else np.array([], dtype=float)
+            np.save(outfile, arr)
 
         if hasattr(event_fit, 'vbm_fault_params'):
             _save_vbm_array('vbm_faults', event_fit.vbm_fault_params)
