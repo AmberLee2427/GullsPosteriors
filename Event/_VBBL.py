@@ -1,3 +1,5 @@
+""" depricated: use VBMicrolensing instead of VBBinaryLensing for binary lens magnifications"""
+
 import numpy as np
 try:
     import VBBinaryLensing

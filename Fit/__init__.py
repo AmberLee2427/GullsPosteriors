@@ -288,6 +288,7 @@ class Fit:
                 f_err = event.data[obs][6]  # true_rel_flux_err
 
             A = event.get_magnification(t, obs)
+                
             if A is None:
                 return None, np.inf
             fs, fb = self.get_fluxes(A, f, f_err**2)

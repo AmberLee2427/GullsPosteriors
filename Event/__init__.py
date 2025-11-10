@@ -656,14 +656,22 @@ class Event:
         # print('Debug Event.get_magnification: tref', t_ref)
         # print('Debug Event.get_magnification: t', t)
 
-        # Calculate magnification - let errors propagate up for fast failure
-        A = self.magnification(
-            ss, q, xsrot, ysrot, rho, eps=self.eps, timeout=self.vbm_timeout
-        )
+        # Calculate magnification - catch VBM errors and return None for rejected samples
+        try:
+            A = self.magnification(
+                ss, q, xsrot, ysrot, rho, eps=self.eps, timeout=self.vbm_timeout
+            )
+        except Exception as e:
+            # VBM error - already logged in _VBM.py before exception was raised
+            if "VBM" in self.debug or True:  # Always log VBM failures for now
+                print(f"Event.get_magnification: VBM error caught: {e}")
+            return None  # Signal rejection to get_chi2
         
         # Validate magnification results - should be real numbers
         if A is None or not np.isfinite(A).all() or len(A) == 0:
-            raise RuntimeError(f"Magnification calculation returned invalid results: {A}. Check parameters and library installation.")
+            if "VBM" in self.debug or True:
+                print(f"Event.get_magnification: Invalid magnification result: {A}")
+            return None  # Signal rejection to get_chi2
 
         # vbbl has CoM O
 

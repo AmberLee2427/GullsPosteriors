@@ -30,8 +30,8 @@ from Orbit import Orbit
 try:
     from VBMicrolensing import VBMicrolensing
 except ImportError:
-    print("Warning: VBMicrolensing not available. Some functionality may be limited.")
-    VBMicrolensing = None
+    raise RuntimeError("VBMicrolensing not available")
+    
 
 
 def parse_args(argv=None):
@@ -371,7 +371,6 @@ def run(args):
 
     fit_obj = Fit(sampling_package=args.sampler, LOM_enabled=LOM_enabled, ndim=ndim, labels=labels, normal=normal, unit_cube=unit_cube)
     fit_obj.plot_chains = plot_chains
-    vbm = VBMicrolensing(); vbm.a1 = 0.36
 
     if not os.path.exists(path + "posteriors/"):
         os.mkdir(path + "posteriors/")
@@ -557,7 +556,7 @@ def run(args):
                     for obs in ordered_obs:
                         _ = event_tref.get_magnification(t_data[obs], obs)
                 except Exception:
-                    pass
+                    raise RuntimeError("Failed to compute magnifications for trajectory diagnostics at tref.")
 
                 # Choose an observatory to anchor the center (first available)
                 first_obs = ordered_obs[0]  # this is the Roman wide filter. All observations are from Roman
@@ -589,9 +588,9 @@ def run(args):
                 # Draw caustics using separation near t_ref
                 s_use = float(truths['params'][0])
                 q_use = float(truths['params'][1])
-                caustics = vbm.Caustics(s_use, q_use)
+                caustics = event_tref.mag_obj.Caustics(s_use, q_use)  # log?
                 for closed in caustics:
-                    axc.plot(closed[0], closed[1], '-', color='blue', ms=1, alpha=0.7)
+                    axc.plot(closed[0], closed[1], '-', color='blue', ms=2, alpha=0.7)
 
                 # Lens positions (COM frame at t_ref)
                 axc.plot(event_tref.lens1_0[0], event_tref.lens1_0[1], 'o', ms=6, color='red')

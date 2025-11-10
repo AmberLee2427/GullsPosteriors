@@ -7,12 +7,18 @@
 
 ## TODO:
 
-* add final plots with samples
-* fix caustic plot bounds
+* add final plots with samples <- these are still mid, but we have a good versions of the corner plots in the post-processing notebook (`GullsPosteriors/unc_check.ipynb`)
+* fix caustic plot bounds - can't see shit
 * fix chain plot:
   - log parametrs don't seem to be working correctly 
-  - always plotting in unit cudem space, even when using physical paramters
+  - always plotting in unit cube space, even when using physical paramters
+  ^ Did we fix this already?
 * make sure n is always bigger than n_burnin, or n_tot = n + n_burnin
 * ~~help text for the cli~~ ✅ Added comprehensive help with examples and grouped arguments
 * ~~log to file and make sure all changable settings are recorded~~ ✅ Added .prm YAML logging
-* do we need to do something about there being more than 1 obs group?
+* ~~do we need to do something about there being more than 1 obs group?~~ <- No.
+* ~~Collect peaks + unc for Sean~~ ✅ Done in `collected_lightcurves/` and sent on Slack
+* The VBM logging doesn't seem to be working. We need to look in to this and fix it. Before we added the try/except and timepout we were getting failures on the order of the number of events or more, so getting nothing in the logging arrays for 3 full mass bins seems unlikely.
+* Farzahna the bloody pain in the butt gave us the wrong event list. I've relaces the event_list in the data folders, but everything needs to be rerun. Blessing in disguise, I guess, considering the VBM logging wasn't working.
+* Fix race condition (?) on first event in the slurm array
+* Run all bins

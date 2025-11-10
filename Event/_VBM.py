@@ -2,9 +2,7 @@ import numpy as np
 try:
     import VBMicrolensing
 except ImportError as e:
-    print(f"Warning: VBMicrolensing module not available: {e}")
-    print("Magnification calculations will fail. Ensure VBMicrolensing is properly installed.")
-    VBMicrolensing = None
+    raise RuntimeError(f"VBMicrolensing module not available: {e}. Magnification calculations will fail. Ensure VBMicrolensing is properly installed.")
 import signal
 
 class TimeoutError(Exception):
@@ -57,6 +55,7 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
         raise ImportError("VBMicrolensing module is required but not available. Install with: pip install VBMicrolensing")
     
     # Parameter validation - catch stupid values before they hang VBM
+    """
     if q <= 0 or q > 10:
         raise ValueError(f"Mass ratio q={q} is invalid (must be 0 < q <= 10)")
     
@@ -71,7 +70,8 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
     
     if self.gamma < 0 or self.gamma > 1:
         raise ValueError(f"Limb darkening gamma={self.gamma} is invalid (must be 0 <= gamma <= 1)")
-
+    #"""
+    
     if self.mag_obj is None:
         self.mag_obj = VBMicrolensing.VBMicrolensing()
 
@@ -80,16 +80,9 @@ def magnification(self, ss, q, u1, u2, rho, eps=1e-4, timeout=300):
 
     # Force linear limb darkening profile when available
     if hasattr(self.mag_obj, 'SetLDprofile') and hasattr(self.mag_obj, 'LDprofiles'):
-        try:
-            self.mag_obj.SetLDprofile(self.mag_obj.LDprofiles.LDlinear)
-        except AttributeError:
-            pass
+        self.mag_obj.SetLDprofile(self.mag_obj.LDprofiles.LDlinear)
 
     self.mag_obj.a1 = self.gamma
-    try:
-        self.mag_obj.a2 = 0.0
-    except AttributeError:
-        pass
     self.mag_obj.RelTol = eps
 
     mag = np.zeros_like(ss)
