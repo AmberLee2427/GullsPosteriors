@@ -1,0 +1,3 @@
+mass_bin,prm_file,event_id,field,subrun
+m30,597_3_419_sampling.prm,419,597,3
+m30,839_0_348_sampling.prm,348,839,0
